@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
-# Cut a new release: bump version, draft notes via Claude, review, tag, push, create GitHub release.
+# Cut a new release: bump version, draft notes via the homelab LiteLLM
+# proxy (deepseek-v4-pro:cloud by default), review, tag, push, create
+# GitHub release.
 #
 # Usage: scripts/release.sh {patch|minor|major}
+#
+# Env (all optional, sensible defaults):
+#   LITELLM_URL          Proxy base URL (default http://127.0.0.1:4000)
+#   LITELLM_MODEL        Model name (default deepseek-v4-pro-cloud)
+#   LITELLM_MASTER_KEY   Bearer token. If unset, auto-decrypted from
+#                        $HOMELAB_REPO/ai/litellm/.env.sops via 'just secrets'.
+#   HOMELAB_REPO         Default ~/Documents/Homelab.
 #
 # Tag push triggers .github/workflows/release.yml which publishes to PyPI.
 # pyproject.toml is NOT mutated locally; the release workflow rewrites the
 # version from the tag at build time.
 
 set -euo pipefail
+
+LITELLM_URL="${LITELLM_URL:-http://127.0.0.1:4000}"
+LITELLM_MODEL="${LITELLM_MODEL:-deepseek-v4-pro-cloud}"
+HOMELAB_REPO="${HOMELAB_REPO:-$HOME/Documents/Homelab}"
 
 LEVEL="${1:-}"
 case "$LEVEL" in
@@ -51,22 +64,29 @@ if [ "$local_sha" != "$remote_sha" ]; then
     exit 1
 fi
 
-command -v claude >/dev/null || {
-    echo "error: 'claude' CLI not found" >&2
+for tool in gh jq uv curl; do
+    command -v "$tool" >/dev/null || {
+        echo "error: '$tool' not found on PATH" >&2
+        exit 1
+    }
+done
+
+# Bootstrap LITELLM_MASTER_KEY from homelab sops if not already exported.
+if [ -z "${LITELLM_MASTER_KEY:-}" ]; then
+    if [ -f "$HOMELAB_REPO/justfile" ] && [ -f "$HOMELAB_REPO/ai/litellm/.env.sops" ]; then
+        echo "==> Decrypting LITELLM_MASTER_KEY from $HOMELAB_REPO/ai/litellm/.env.sops…"
+        LITELLM_MASTER_KEY=$(
+            cd "$HOMELAB_REPO" && just secrets sopsx ai/litellm/.env.sops -d 2>/dev/null \
+                | awk -F= '/^LITELLM_MASTER_KEY=/{ sub(/^LITELLM_MASTER_KEY=/,""); print; exit }'
+        )
+        export LITELLM_MASTER_KEY
+    fi
+fi
+if [ -z "${LITELLM_MASTER_KEY:-}" ]; then
+    echo "error: LITELLM_MASTER_KEY not in env and could not bootstrap" >&2
+    echo "  hint: export LITELLM_MASTER_KEY=... or set HOMELAB_REPO=<path>" >&2
     exit 1
-}
-command -v gh >/dev/null || {
-    echo "error: 'gh' CLI not found" >&2
-    exit 1
-}
-command -v jq >/dev/null || {
-    echo "error: 'jq' not found" >&2
-    exit 1
-}
-command -v uv >/dev/null || {
-    echo "error: 'uv' not found" >&2
-    exit 1
-}
+fi
 
 # --- Compute versions --------------------------------------------------------
 
@@ -95,55 +115,103 @@ fi
 echo "==> Bumping $current → $new ($LEVEL)"
 echo "==> $(echo "$commits" | grep -c '^- ') commits since ${last_tag:-<root>}"
 
-# --- Draft notes via Claude --------------------------------------------------
+# --- Draft notes via LiteLLM proxy -------------------------------------------
 
-prompt=$(
+system_prompt='You are an experienced open-source maintainer writing GitHub
+release notes for the Python package "drape" — a CLI and Claude Code hook
+that masks secrets in .env / SOPS / YAML / JSON / TOML files for safe LLM
+inspection. Audience: developers and security-conscious users running drape
+locally or in CI.
+
+Voice: precise, factual, no marketing language, no emoji, no exclamation
+points. Write as if reviewers from a security-minded shop will read it.
+
+Title rules:
+  - Format exactly: "vX.Y.Z — <what users notice>"
+  - No more than 80 characters total
+  - No trailing punctuation
+  - Summarize the most important user-visible change, not the bump kind
+
+Body rules (GitHub-flavored markdown):
+  - Group bullets under "### Added", "### Changed", "### Fixed", "###
+    Removed", "### Security", "### Deprecated". Include ONLY sections that
+    apply.
+  - Each bullet describes user-visible impact, not commit mechanics. If
+    several commits implement one feature, collapse them into a single
+    bullet. Skip mechanical commits (deps bumps, lockfile churn, internal
+    refactors, CI tweaks) unless they materially affect users.
+  - For breaking changes, prefix the bullet with **Breaking:** and include
+    a brief migration note inline.
+  - Reference user-visible function/CLI flag names in `code` formatting.
+  - Do not invent features that are not supported by the commit log.
+  - End the body with an "**Install**" heading followed by a single fenced
+    bash block: `uv tool install drape=='"$new"'`.
+
+Output: ONLY the JSON object. No preamble, no postscript, no fences around
+the JSON.'
+
+user_prompt=$(
     cat <<EOF
-You are drafting GitHub release notes for the "drape" Python package — a CLI
-and Claude Code hook that masks secrets in .env / SOPS / YAML / JSON / TOML
-files for safe LLM inspection.
-
-This is a $LEVEL bump from $current to $new.
+Draft release notes for drape $new ($LEVEL bump from $current).
 
 Commits since ${last_tag:-<root commit>}:
 
 $commits
-
-Produce JSON with two fields:
-  - title: one line, format "vX.Y.Z — <short human summary>" (no markdown, no
-    trailing punctuation).
-  - body: GitHub-flavored markdown, grouped under "### Added", "### Changed",
-    "### Fixed", "### Removed" headers (only include sections that apply).
-    Bullet points should describe user-facing impact, not internal refactors.
-    Skip purely mechanical commits (deps bumps, formatting) unless they
-    materially affect users. End with an "**Install**" line: \`uv tool install
-    drape==$new\` (in fenced bash block).
-
-Be concise. No preamble, no marketing language, no emoji.
 EOF
 )
 
-schema='{
-  "type": "object",
-  "properties": {
-    "title": {"type": "string"},
-    "body":  {"type": "string"}
-  },
-  "required": ["title", "body"],
-  "additionalProperties": false
-}'
+request_body=$(jq -n \
+    --arg model "$LITELLM_MODEL" \
+    --arg system "$system_prompt" \
+    --arg user "$user_prompt" \
+    --arg version "$new" \
+    '{
+      model: $model,
+      messages: [
+        {role: "system", content: $system},
+        {role: "user",   content: $user}
+      ],
+      max_tokens: 4096,
+      temperature: 0.3,
+      reasoning_effort: "low",
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "release_notes",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              title: {type: "string"},
+              body:  {type: "string"}
+            },
+            required: ["title", "body"],
+            additionalProperties: false
+          }
+        }
+      }
+    }')
 
-echo "==> Drafting notes with Claude…"
-draft_response=$(printf '%s' "$prompt" | claude -p \
-    --output-format json \
-    --json-schema "$schema")
+echo "==> Drafting notes via $LITELLM_MODEL at $LITELLM_URL…"
+draft_response=$(curl -sS -X POST "$LITELLM_URL/v1/chat/completions" \
+    -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
+    -H "Content-Type: application/json" \
+    --max-time 240 \
+    -d "$request_body")
 
-title=$(printf '%s' "$draft_response" | jq -r '.structured_output.title // empty')
-body=$(printf '%s' "$draft_response" | jq -r '.structured_output.body // empty')
+content=$(printf '%s' "$draft_response" | jq -r '.choices[0].message.content // empty')
+if [ -z "$content" ]; then
+    echo "error: empty response from LiteLLM proxy" >&2
+    printf '%s' "$draft_response" | jq '.' >&2 || printf '%s\n' "$draft_response" >&2
+    exit 1
+fi
+
+title=$(printf '%s' "$content" | jq -r '.title // empty')
+body=$(printf '%s' "$content" | jq -r '.body // empty')
 
 if [ -z "$title" ] || [ -z "$body" ]; then
-    echo "error: claude returned no structured output" >&2
-    printf '%s' "$draft_response" | jq '.' >&2 || printf '%s\n' "$draft_response" >&2
+    echo "error: model output did not match schema" >&2
+    printf '%s\n' "$content" >&2
     exit 1
 fi
 
