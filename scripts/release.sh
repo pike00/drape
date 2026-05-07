@@ -64,7 +64,7 @@ if [ "$local_sha" != "$remote_sha" ]; then
     exit 1
 fi
 
-for tool in gh jq uv curl; do
+for tool in gh jq curl; do
     command -v "$tool" >/dev/null || {
         echo "error: '$tool' not found on PATH" >&2
         exit 1
@@ -89,21 +89,35 @@ if [ -z "${LITELLM_MASTER_KEY:-}" ]; then
 fi
 
 # --- Compute versions --------------------------------------------------------
+# The git tag is the source of truth (workflow rewrites pyproject.toml from
+# the tag at build time). Compute next version by bumping the latest tag,
+# NOT by reading pyproject.toml.
 
-current=$(uv version --short)
-new=$(uv version --bump "$LEVEL" --dry-run --short)
+last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+if [ -n "$last_tag" ]; then
+    current="${last_tag#v}"
+    log_range="$last_tag..HEAD"
+else
+    current="0.0.0"
+    log_range="HEAD"
+fi
+
+if ! [[ "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "error: latest tag '$last_tag' is not semver-shaped (X.Y.Z)" >&2
+    exit 1
+fi
+
+IFS=. read -r v_major v_minor v_patch <<<"$current"
+case "$LEVEL" in
+    patch) new="$v_major.$v_minor.$((v_patch + 1))" ;;
+    minor) new="$v_major.$((v_minor + 1)).0" ;;
+    major) new="$((v_major + 1)).0.0" ;;
+esac
 new_tag="v$new"
 
 if git rev-parse "$new_tag" >/dev/null 2>&1; then
     echo "error: tag $new_tag already exists" >&2
     exit 1
-fi
-
-last_tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
-if [ -n "$last_tag" ]; then
-    log_range="$last_tag..HEAD"
-else
-    log_range="HEAD"
 fi
 
 commits=$(git log --no-merges --pretty=format:'- %s%n%b' "$log_range")
@@ -192,13 +206,36 @@ request_body=$(jq -n \
       }
     }')
 
-echo "==> Drafting notes via $LITELLM_MODEL at $LITELLM_URL…"
-draft_response=$(curl -sS -X POST "$LITELLM_URL/v1/chat/completions" \
+echo "==> Drafting notes via $LITELLM_MODEL → Ollama Cloud (LiteLLM proxy)…"
+echo "    deepseek-v4-pro is a reasoning model; expect 30–60s of think time."
+
+resp_file=$(mktemp -t drape-llm-resp-XXXXXX.json)
+trap 'rm -f "${resp_file:-} ${tmp:-} ${notes_file:-}"' EXIT
+
+curl -sS -X POST "$LITELLM_URL/v1/chat/completions" \
     -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
     -H "Content-Type: application/json" \
-    --max-time 240 \
-    -d "$request_body")
+    --max-time 300 \
+    -d "$request_body" \
+    -o "$resp_file" &
+curl_pid=$!
 
+start=$SECONDS
+while kill -0 "$curl_pid" 2>/dev/null; do
+    sleep 5
+    printf '\r    elapsed: %ds…  ' "$((SECONDS - start))" >&2
+done
+wait "$curl_pid"
+curl_status=$?
+printf '\r    completed in %ds       \n' "$((SECONDS - start))" >&2
+
+if [ "$curl_status" -ne 0 ]; then
+    echo "error: LiteLLM call failed (curl exit $curl_status)" >&2
+    cat "$resp_file" >&2
+    exit 1
+fi
+
+draft_response=$(cat "$resp_file")
 content=$(printf '%s' "$draft_response" | jq -r '.choices[0].message.content // empty')
 if [ -z "$content" ]; then
     echo "error: empty response from LiteLLM proxy" >&2
@@ -218,7 +255,6 @@ fi
 # --- Review ------------------------------------------------------------------
 
 tmp=$(mktemp -t drape-release-XXXXXX.md)
-trap 'rm -f "$tmp"' EXIT
 
 cat >"$tmp" <<EOF
 $title
@@ -272,7 +308,6 @@ esac
 # --- Tag, push, release ------------------------------------------------------
 
 notes_file=$(mktemp -t drape-notes-XXXXXX.md)
-trap 'rm -f "$tmp" "$notes_file"' EXIT
 printf '%s\n' "$body" >"$notes_file"
 
 echo "==> Creating GitHub release $new_tag"
