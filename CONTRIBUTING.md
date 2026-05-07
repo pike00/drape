@@ -1,11 +1,11 @@
-# Contributing to envmask
+# Contributing to drape
 
 Thank you for your interest in contributing! This document outlines the process.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/envmask.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/drape.git`
 3. Create a virtual environment: `python3 -m venv venv`
 4. Activate it: `source venv/bin/activate`
 5. Install in development mode: `pip install -e .`
@@ -37,7 +37,7 @@ python -m pytest tests/
 
 ## Security Considerations
 
-envmask is designed to prevent secrets from appearing in LLM conversation transcripts. When contributing:
+drape is designed to prevent secrets from appearing in LLM conversation transcripts. When contributing:
 
 - Do **not** weaken the masking strategy without discussion
 - Consider the threat model (see [docs/architecture.md](docs/architecture.md))

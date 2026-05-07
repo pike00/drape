@@ -1,10 +1,10 @@
-# envmask Documentation
+# drape Documentation
 
-Welcome to the envmask documentation! This directory contains all guides and references.
+Welcome to the drape documentation! This directory contains all guides and references.
 
 ## Core Documentation
 
-- **[SETUP.md](SETUP.md)** — Complete guide to installing and using envmask with Claude Code
+- **[SETUP.md](SETUP.md)** — Complete guide to installing and using drape with Claude Code
   - Installation instructions (quick start and manual)
   - Usage examples
   - Troubleshooting

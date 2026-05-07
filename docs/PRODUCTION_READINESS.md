@@ -3,7 +3,7 @@
 **Date:** 2026-04-09  
 **Status:** ✅ **READY FOR DISTRIBUTION**
 
-This document summarizes the production readiness improvements made to envmask before PyPI publication.
+This document summarizes the production readiness improvements made to drape before PyPI publication.
 
 ## Summary of Changes
 
@@ -14,18 +14,18 @@ All critical issues from the production readiness review have been resolved. The
 #### Version Management (✅ Fixed)
 - **Issue:** Hard-coded version in `cli.py` could drift from `__version__`
 - **Fix:** Updated `cli.py` to import and use `__version__` from `__init__.py`
-- **File:** `src/envmask/cli.py`
+- **File:** `src/drape/cli.py`
 
 #### Logging with loguru (✅ Added)
 - **Feature:** Added comprehensive logging using `loguru`
 - **Changes:**
-  - `src/envmask/masker.py`: Added debug logging for file parsing, entry counts, and errors
-  - `src/envmask/cli.py`: Configured logging, replaced print statements with logger calls
-  - `src/envmask/hook/__init__.py`: Added silent debug logging for hook operations
+  - `src/drape/masker.py`: Added debug logging for file parsing, entry counts, and errors
+  - `src/drape/cli.py`: Configured logging, replaced print statements with logger calls
+  - `src/drape/hook/__init__.py`: Added silent debug logging for hook operations
 - **Benefits:** Better debugging capability without spamming output
 
 #### Type Hints (✅ Complete)
-- **File:** `src/envmask/hook/__init__.py`
+- **File:** `src/drape/hook/__init__.py`
 - **Changes:**
   - Added return type hints to `main()` function
   - Added type hints to `_should_mask()` helper function
@@ -79,7 +79,7 @@ All critical issues from the production readiness review have been resolved. The
 ### 4. Hook Pattern Matching
 
 #### File Extension Filtering (✅ Improved)
-- **File:** `src/envmask/hook/__init__.py`
+- **File:** `src/drape/hook/__init__.py`
 - **Added:** `_should_mask()` helper function for robust pattern matching
 - **Excludes:** `.sops`, `.example`, `.json`, `.yaml`, `.yml` extensions
 - **Behavior:**
@@ -96,7 +96,7 @@ All critical issues from the production readiness review have been resolved. The
 - **Benefit:** Handles Python version mismatches, symlinks, virtual environments
 
 #### Case-Insensitive Path Matching (✅ Added)
-- **File:** `src/envmask/hook/__init__.py`
+- **File:** `src/drape/hook/__init__.py`
 - **Added:** `.lower()` to basename for case-insensitive comparison
 - **Benefit:** Works consistently across case-sensitive and insensitive filesystems
 
@@ -157,21 +157,21 @@ All 14 tests pass with 100% success rate:
 ## Build Verification
 
 - ✅ `uv build` succeeds
-- ✅ Wheel: `envmask-0.1.0-py3-none-any.whl` created
-- ✅ Source: `envmask-0.1.0.tar.gz` created
+- ✅ Wheel: `drape-0.1.0-py3-none-any.whl` created
+- ✅ Source: `drape-0.1.0.tar.gz` created
 - ✅ Installation from wheel succeeds
-- ✅ CLI works: `envmask --version` → `envmask 0.1.0`
+- ✅ CLI works: `drape --version` → `drape 0.1.0`
 - ✅ Hook works: JSON input processed correctly
-- ✅ Python imports work: `from envmask import mask_value`
+- ✅ Python imports work: `from drape import mask_value`
 
 ## Files Modified
 
 | File | Changes |
 |------|---------|
-| `src/envmask/__init__.py` | No changes (version stable) |
-| `src/envmask/cli.py` | Use `__version__`, added logging |
-| `src/envmask/masker.py` | Added loguru logging |
-| `src/envmask/hook/__init__.py` | Type hints, improved pattern matching, logging |
+| `src/drape/__init__.py` | No changes (version stable) |
+| `src/drape/cli.py` | Use `__version__`, added logging |
+| `src/drape/masker.py` | Added loguru logging |
+| `src/drape/hook/__init__.py` | Type hints, improved pattern matching, logging |
 | `tests/test_masker.py` | Added 3 new tests |
 | `pyproject.toml` | Hatchling, Python 3.9+, loguru, uv config |
 | `MANIFEST.in` | Updated to include CHANGELOG.md, exclude tests |
@@ -208,7 +208,7 @@ All 14 tests pass with 100% success rate:
    - [ ] Create GitHub repository
    - [ ] Create GitHub release with v0.1.0 tag
    - [ ] Publish to PyPI
-   - [ ] Verify installation via `pip install envmask`
+   - [ ] Verify installation via `pip install drape`
 
 5. 📝 **Post-Release:**
    - [ ] Announce release on GitHub
@@ -226,7 +226,7 @@ All 14 tests pass with 100% success rate:
 
 **Status: ✅ APPROVED FOR PRODUCTION**
 
-envmask is ready for publication to PyPI. All critical issues have been resolved, comprehensive testing is in place, and documentation is complete. The package follows Python packaging best practices and is compatible with modern tooling (uv, hatchling, pytest).
+drape is ready for publication to PyPI. All critical issues have been resolved, comprehensive testing is in place, and documentation is complete. The package follows Python packaging best practices and is compatible with modern tooling (uv, hatchling, pytest).
 
 **Suggested Release Timeline:**
 - Publish to PyPI: This week

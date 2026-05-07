@@ -1,4 +1,4 @@
-"""Setup configuration for envmask."""
+"""Setup configuration for drape."""
 
 from setuptools import setup
 

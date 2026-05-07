@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Example: Using envmask as a library.
+"""Example: Using drape as a library.
 
-This example shows how to use envmask.masker in your own code.
+This example shows how to use drape.masker in your own code.
 """
 
 from pathlib import Path
 
-from envmask import parse_env_file
+from drape import parse_env_file
 
 # Parse and print masked env vars
 env_file = Path(".env")

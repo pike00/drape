@@ -1,6 +1,6 @@
-# Publishing envmask to GitHub and PyPI
+# Publishing drape to GitHub and PyPI
 
-This document outlines the steps to publish envmask.
+This document outlines the steps to publish drape.
 
 ## Prerequisites
 
@@ -12,19 +12,19 @@ This document outlines the steps to publish envmask.
 ## Step 1: Initialize Git Repository
 
 ```bash
-cd envmask
+cd drape
 git init
 git config user.name "Your Name"
 git config user.email "your.email@example.com"
 git add .
-git commit -m "Initial commit: envmask v0.1.0"
+git commit -m "Initial commit: drape v0.1.0"
 git branch -M main
 ```
 
 ## Step 2: Add GitHub Remote
 
 ```bash
-git remote add origin https://github.com/pike00/envmask.git
+git remote add origin https://github.com/pike00/drape.git
 git push -u origin main
 ```
 
@@ -36,7 +36,7 @@ git push origin v0.1.0
 ```
 
 Then on GitHub:
-1. Go to https://github.com/pike00/envmask/releases
+1. Go to https://github.com/pike00/drape/releases
 2. Click "Draft a new release"
 3. Select tag `v0.1.0`
 4. Add release notes from [CHANGELOG.md](../CHANGELOG.md)
@@ -48,7 +48,7 @@ Then on GitHub:
 ### Option A: Manual Upload (with uv)
 
 ```bash
-uv build  # Creates dist/envmask-0.1.0-py3-none-any.whl and dist/envmask-0.1.0.tar.gz
+uv build  # Creates dist/drape-0.1.0-py3-none-any.whl and dist/drape-0.1.0.tar.gz
 uv pip install twine
 uv run twine upload dist/*
 # Enter PyPI username and password when prompted
@@ -94,8 +94,8 @@ Then:
 After publishing to PyPI:
 
 ```bash
-pip install envmask
-envmask --version
+pip install drape
+drape --version
 ```
 
 ## Future Updates
@@ -113,5 +113,5 @@ To release a new version (e.g., v0.2.0):
 
 - First release to PyPI may take 5-10 minutes to appear
 - Subsequent releases cache for ~5 minutes
-- You can view package stats at https://pypi.org/project/envmask/
-- Yank old versions if needed: https://pypi.org/project/envmask/#history
+- You can view package stats at https://pypi.org/project/drape/
+- Yank old versions if needed: https://pypi.org/project/drape/#history

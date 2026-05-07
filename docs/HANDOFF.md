@@ -1,4 +1,4 @@
-# Handoff: envmask — Safe .env Management for LLMs
+# Handoff: drape — Safe .env Management for LLMs
 
 **Generated**: 2026-04-09 (Updated: 2026-04-09)  
 **Status**: Phase 1-2 Complete, GitHub Ready, Phase 3 In Design  
@@ -17,18 +17,18 @@ Create a production-ready Python package and Claude Code plugin that masks secre
 - [x] Documented architecture and threat model
 
 **Phase 2: Claude Code Integration**
-- [x] PreToolUse hook in `.claude/hooks/envmask-mask.py`
+- [x] PreToolUse hook in `.claude/hooks/drape-mask.py`
 - [x] Hook wired into `.claude/settings.json`
 - [x] Tested masking on real .env files
 
 **GitHub Publishing (New)**
 - [x] Converted bash script to Python package with proper structure
-- [x] Created `src/envmask/` with masker.py, cli.py, __init__.py
+- [x] Created `src/drape/` with masker.py, cli.py, __init__.py
 - [x] Full test suite: 11 tests, all passing
 - [x] Package build system: pyproject.toml, setup.py, MANIFEST.in
 - [x] Documentation: README, CHANGELOG, CONTRIBUTING, architecture
 - [x] License: MIT (LICENSE file)
-- [x] CLI entry point: `envmask` command
+- [x] CLI entry point: `drape` command
 - [x] Python API: importable modules
 - [x] Verified builds: wheel and source distributions
 
@@ -76,7 +76,7 @@ Create a production-ready Python package and Claude Code plugin that masks secre
 - Extended format support (planned for Phase 4)
 
 **Uncommitted Changes:**
-- `/home/will/Documents/Homelab/envmask/` directory (new project)
+- `/home/will/Documents/Homelab/drape/` directory (new project)
 
 ## Files to Know
 
@@ -113,7 +113,7 @@ masked="${value:0:3}..."  # First 3 chars + ellipsis
          "matcher": "Read",
          "hooks": [{
            "type": "command",
-           "command": "cd /home/will/Documents/Homelab/envmask && ./scripts/parse-env.sh $FILE"
+           "command": "cd /home/will/Documents/Homelab/drape && ./scripts/parse-env.sh $FILE"
          }]
        }]
      }
@@ -157,7 +157,7 @@ masked="${value:0:3}..."  # First 3 chars + ellipsis
 7. **Create plugin manifest** (`.claude-plugin/manifest.json`):
    ```json
    {
-     "name": "envmask",
+     "name": "drape",
      "description": "Mask secrets in .env files for safe LLM reading",
      "hooks": [
        { "event": "PostToolUse", "matcher": "Read", "action": "mask-env-secrets" }
@@ -183,8 +183,8 @@ None beyond the `.env` file present in the service directory you're masking.
 
 ## Security Notes
 
-- **Full secrets remain in .env** — envmask masks display only, doesn't encrypt
-- **File permissions unchanged** — envmask respects existing `chmod` rules
+- **Full secrets remain in .env** — drape masks display only, doesn't encrypt
+- **File permissions unchanged** — drape respects existing `chmod` rules
 - **No audit trail** — (Phase 4 feature) no logging of who/when secrets were accessed
 - **Unmasking not implemented** — (Phase 4 feature) would require re-authentication
 
@@ -197,7 +197,7 @@ None beyond the `.env` file present in the service directory you're masking.
 
 ## Plugin Concept
 
-**Vision for Phase 3:** envmask as a Claude Code plugin that:
+**Vision for Phase 3:** drape as a Claude Code plugin that:
 1. Auto-detects `.env`, `.env.local`, and related files
 2. Masks secrets on every `Read` without explicit configuration
 3. Provides settings UI to customize masking rules (which keys to mask, masking pattern)

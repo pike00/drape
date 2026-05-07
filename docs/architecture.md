@@ -1,8 +1,8 @@
-# envmask Architecture
+# drape Architecture
 
 ## Overview
 
-**envmask** is a credential masking utility designed to make `.env` file management safe for AI agents like Claude Code.
+**drape** is a credential masking utility designed to make `.env` file management safe for AI agents like Claude Code.
 
 ## Problem
 
@@ -37,7 +37,7 @@ This retains enough information to identify a credential (which service, which k
 
 ### Phase 2: Claude Code Integration
 - [x] PreToolUse hook in `.claude/settings.json` intercepts `Read` on `.env` files
-- [x] Python hook script at `.claude/hooks/envmask-mask.py`
+- [x] Python hook script at `.claude/hooks/drape-mask.py`
 - [x] Hook denies raw Read and returns masked content as denial reason
 - [x] Tested with real `.env` files (mattermost)
 - Status: **DONE**
@@ -85,7 +85,7 @@ Simple bash script that:
       "matcher": "Read",
       "hooks": [{
         "type": "command",
-        "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/envmask-mask.py"
+        "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/drape-mask.py"
       }]
     }]
   }
@@ -112,7 +112,7 @@ The hook receives tool input as JSON on stdin, checks if the file matches `.env`
 
 1. **Compromised claude.ai account** — If someone has access to your Claude account, they can read `.env` files anyway
 2. **Keyloggers** — If your machine is compromised, masking won't help
-3. **Permissions escalation** — envmask respects existing file permissions
+3. **Permissions escalation** — drape respects existing file permissions
 4. **Unmasking** — A future unmasking feature would need strong auth (MFA, 2FA)
 
 ### Threat Model
@@ -132,7 +132,7 @@ Can they guess from pattern? No — AWS access key format is known, but first 3 
 ## File Structure
 
 ```
-envmask/
+drape/
 ├── README.md                  # Overview
 ├── docs/
 │   └── architecture.md        # This file

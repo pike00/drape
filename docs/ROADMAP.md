@@ -1,6 +1,6 @@
-# envmask Roadmap
+# drape Roadmap
 
-This document outlines planned features and improvements for future versions of envmask.
+This document outlines planned features and improvements for future versions of drape.
 
 ## Version 0.1.0 (Current)
 
@@ -150,7 +150,7 @@ None expected during alpha/beta phases
 ## How to Contribute
 
 Have ideas for features? Please open an issue:
-https://github.com/pike00/envmask/issues
+https://github.com/pike00/drape/issues
 
 For security-related suggestions, email will@khanpikehome.com
 
@@ -158,7 +158,7 @@ For security-related suggestions, email will@khanpikehome.com
 
 ## Version Numbering
 
-envmask follows [Semantic Versioning](https://semver.org/):
+drape follows [Semantic Versioning](https://semver.org/):
 
 - **MAJOR** version for incompatible API changes
 - **MINOR** version for new features (backwards compatible)
