@@ -208,7 +208,7 @@ All 14 tests pass with 100% success rate:
    - [ ] Create GitHub repository
    - [ ] Create GitHub release with v0.1.0 tag
    - [ ] Publish to PyPI
-   - [ ] Verify installation via `pip install drape`
+   - [ ] Verify installation via `uv tool install drape`
 
 5. 📝 **Post-Release:**
    - [ ] Announce release on GitHub

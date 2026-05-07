@@ -41,6 +41,7 @@ Publishing = "https://github.com/pike00/drape/blob/main/docs/PUBLISHING.md"
 
 [project.scripts]
 drape = "drape.cli:main"
+drape-hook = "drape.hook:main"
 
 [project.optional-dependencies]
 yaml = ["PyYAML>=6.0"]

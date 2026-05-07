@@ -4,26 +4,27 @@ Thank you for your interest in contributing! This document outlines the process.
 
 ## Getting Started
 
+drape uses [uv](https://docs.astral.sh/uv/) for environment and dependency management. Install it first if you don't have it.
+
 1. Fork the repository
 2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/drape.git`
-3. Create a virtual environment: `python3 -m venv venv`
-4. Activate it: `source venv/bin/activate`
-5. Install in development mode: `pip install -e .`
+3. `cd drape && uv sync --group dev` — creates `.venv/`, installs runtime + dev deps from `uv.lock`
 
 ## Development
 
 ### Running Tests
 
 ```bash
-python -m pytest tests/
+uv run pytest tests/
 ```
 
 ### Code Style
 
 - Follow PEP 8
 - Use type hints where appropriate
-- Run `black` for formatting (configured in `pyproject.toml`)
-- Run `mypy` for type checking
+- `uv run black src tests` for formatting (configured in `pyproject.toml`)
+- `uv run ruff check src tests` for lint
+- `uv run mypy src` for type checking
 
 ### Adding Features
 

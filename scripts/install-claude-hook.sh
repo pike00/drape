@@ -2,9 +2,8 @@
 # Install drape as a Claude Code PreToolUse hook
 #
 # This script:
-# 1. Installs drape package globally or in a venv
-# 2. Copies the hook script to your Claude Code config directory
-# 3. Updates .claude/settings.json to use the hook
+# 1. Installs drape via `uv tool install`
+# 2. Updates .claude/settings.json to use the `drape-hook` command
 #
 # Usage:
 #   ./scripts/install-claude-hook.sh [--project-dir /path/to/project]
@@ -48,20 +47,28 @@ echo "Project directory: $PROJECT_DIR"
 echo "Claude config: $CLAUDE_DIR"
 echo
 
-# 1. Install drape package
-echo "📦 Installing drape package..."
+# 1. Verify uv is available
+if ! command -v uv >/dev/null 2>&1; then
+  echo "❌ uv not found on PATH. Install it first: https://docs.astral.sh/uv/getting-started/installation/"
+  exit 1
+fi
 
-# Get the Python executable path
-PYTHON_BIN=$(python3 -c "import sys; print(sys.executable)" 2>/dev/null) || PYTHON_BIN="python3"
+# 2. Install drape package via uv
+echo "📦 Installing drape via uv tool..."
 
 if [[ "$INSTALL_MODE" == "global" ]]; then
-  pip install --upgrade drape
-  DRAPE_HOOK="$PYTHON_BIN -m drape.hook"
+  uv tool install --upgrade drape
 else
-  pip install -e "$SCRIPT_DIR"
-  DRAPE_HOOK="$PYTHON_BIN -m drape.hook"
+  uv tool install --upgrade --from "$SCRIPT_DIR" drape
 fi
-echo "   ✓ drape installed (using $PYTHON_BIN)"
+
+DRAPE_HOOK="drape-hook"
+
+# Verify the hook command landed on PATH (uv tool install puts it in ~/.local/bin)
+if ! command -v drape-hook >/dev/null 2>&1; then
+  echo "   ⚠️  drape-hook not on PATH. Run 'uv tool update-shell' or add ~/.local/bin to PATH."
+fi
+echo "   ✓ drape installed (hook command: $DRAPE_HOOK)"
 echo
 
 # 2. Create hooks directory
@@ -90,7 +97,7 @@ if [[ ! -f "$SETTINGS_FILE" ]]; then
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m drape.hook"
+            "command": "drape-hook"
           }
         ]
       }
@@ -100,28 +107,26 @@ if [[ ! -f "$SETTINGS_FILE" ]]; then
 EOF
 else
   # Check if hook already exists
-  if grep -q "drape.hook" "$SETTINGS_FILE" 2>/dev/null; then
+  if grep -qE "drape-hook|drape\.hook" "$SETTINGS_FILE" 2>/dev/null; then
     echo "   ⚠️  Hook already configured in settings.json"
   else
     echo "   Adding PreToolUse hook to existing settings.json..."
     # Backup
     cp "$SETTINGS_FILE" "$SETTINGS_FILE.backup"
-    # Use Python to insert hook (jq not always available)
-    python3 << PYTHON_EOF
-import json
-with open('$SETTINGS_FILE') as f:
+    # Use uv-managed python via uvx to insert hook (jq not always available)
+    uvx --quiet python - "$SETTINGS_FILE" << 'PYTHON_EOF'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
     config = json.load(f)
-if 'hooks' not in config:
-    config['hooks'] = {}
-if 'PreToolUse' not in config['hooks']:
-    config['hooks']['PreToolUse'] = []
+config.setdefault("hooks", {}).setdefault("PreToolUse", [])
 hook_entry = {
     "matcher": "Read",
-    "hooks": [{"type": "command", "command": "python3 -m drape.hook"}]
+    "hooks": [{"type": "command", "command": "drape-hook"}]
 }
-if not any(h.get("matcher") == "Read" for h in config['hooks']['PreToolUse']):
-    config['hooks']['PreToolUse'].insert(0, hook_entry)
-with open('$SETTINGS_FILE', 'w') as f:
+if not any(h.get("matcher") == "Read" for h in config["hooks"]["PreToolUse"]):
+    config["hooks"]["PreToolUse"].insert(0, hook_entry)
+with open(path, "w") as f:
     json.dump(config, f, indent=2)
 PYTHON_EOF
     echo "   ✓ Hook added (backup saved to settings.json.backup)"
@@ -133,8 +138,8 @@ echo
 echo "✅ Verification"
 echo "==============="
 echo
-$PYTHON_BIN -c "from drape import mask_value; print('✓ drape package importable')"
-$PYTHON_BIN -c "import drape.hook; print('✓ drape.hook module available')"
+uv tool run --from drape python -c "from drape import mask_value; print('✓ drape package importable')"
+uv tool run --from drape python -c "import drape.hook; print('✓ drape.hook module available')"
 echo "✓ .claude/settings.json configured"
 echo
 
@@ -146,5 +151,7 @@ echo "2. Try reading a .env file:"
 echo "   /read .env"
 echo "3. You should see masked secrets (e.g., AKI...)"
 echo
-echo "To uninstall, remove the PreToolUse hook from .claude/settings.json"
+echo "To uninstall:"
+echo "  uv tool uninstall drape"
+echo "  # then remove the PreToolUse hook from .claude/settings.json"
 echo

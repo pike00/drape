@@ -4,30 +4,29 @@ Use this checklist before publishing to PyPI and GitHub.
 
 ## Code Quality
 
-- [ ] Run full test suite: `python -m pytest tests/ -v`
-- [ ] Check code style: `ruff check src/ tests/`
-- [ ] Format code: `black --check src/ tests/`
-- [ ] Type check: `mypy src/` (optional, for additional safety)
+- [ ] Run full test suite: `uv run pytest tests/ -v`
+- [ ] Check code style: `uv run ruff check src/ tests/`
+- [ ] Format code: `uv run black --check src/ tests/`
+- [ ] Type check: `uv run mypy src/` (optional, for additional safety)
 - [ ] All tests pass with no errors
 
 ## Build & Distribution
 
-- [ ] Update version in `src/drape/__init__.py`
+- [ ] Update version in `pyproject.toml` and `src/drape/__init__.py`
+- [ ] Refresh lockfile: `uv lock`
 - [ ] Update `CHANGELOG.md` with release notes
 - [ ] Commit changes: `git add -A && git commit -m "Release vX.Y.Z"`
-- [ ] Build distribution: `uv build` (or `python -m build`)
+- [ ] Build distribution: `uv build`
 - [ ] Verify wheel: `unzip -l dist/drape-*.whl | grep -E '(masker|cli|hook)'`
 - [ ] Verify source: `tar tzf dist/drape-*.tar.gz | grep -E '(masker|cli|hook)'`
 
 ## Installation Testing
 
-- [ ] Create clean test environment: `python -m venv /tmp/test-env-X`
-- [ ] Activate: `source /tmp/test-env-X/bin/activate`
-- [ ] Install from wheel: `pip install dist/drape-*.whl`
+- [ ] Install from wheel into an isolated tool env: `uv tool install --force --from dist/drape-*.whl drape`
 - [ ] Test CLI: `drape --version` (should show correct version)
 - [ ] Test CLI help: `drape --help`
-- [ ] Test module: `python -c "from drape import mask_value; print(mask_value('test'))"` (should print `tes...`)
-- [ ] Test hook: `echo '{"tool_input":{"file_path":".env"}}' | python -m drape.hook` (should output JSON)
+- [ ] Test module: `uv tool run --from drape python -c "from drape import mask_value; print(mask_value('test'))"` (should print `tes...`)
+- [ ] Test hook: `echo '{"tool_input":{"file_path":".env"}}' | drape-hook` (should output JSON)
 
 ## GitHub Release
 
@@ -48,16 +47,14 @@ Use this checklist before publishing to PyPI and GitHub.
 - [ ] Check PyPI: https://pypi.org/project/drape/
 
 ### Option B: Manual
-- [ ] Ensure `twine` is installed: `pip install twine`
-- [ ] Upload: `twine upload dist/*`
-- [ ] Enter PyPI credentials when prompted
+- [ ] Upload with uv: `uv publish` (set `UV_PUBLISH_TOKEN=<pypi-token>` or use `--token`)
 - [ ] Check PyPI: https://pypi.org/project/drape/
 
 ## Post-Release Verification
 
-- [ ] Install from PyPI: `pip install drape==X.Y.Z`
+- [ ] Install from PyPI: `uv tool install drape==X.Y.Z`
 - [ ] Verify CLI works: `drape --version`
-- [ ] Verify hook works: `echo '{"tool_input":{"file_path":".env"}}' | python -m drape.hook`
+- [ ] Verify hook works: `echo '{"tool_input":{"file_path":".env"}}' | drape-hook`
 - [ ] Check package stats: https://pypi.org/project/drape/#history
 
 ## Documentation

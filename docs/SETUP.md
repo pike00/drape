@@ -11,22 +11,24 @@ When Claude Code reads a `.env` file, drape automatically masks secrets so they 
 
 ### Quick Start
 
+drape is installed via [uv](https://docs.astral.sh/uv/). Install uv first if you don't have it.
+
 ```bash
 # Install drape (via PyPI)
-pip install drape
+uv tool install drape
 
 # OR install from source
 git clone https://github.com/pike00/drape.git
 cd drape
-pip install .
+uv tool install .
 
 # Set up Claude Code hook (from drape directory)
 bash scripts/install-claude-hook.sh --project-dir /path/to/your/project
 ```
 
 The script will:
-1. Install the drape package
-2. Configure `.claude/settings.json` to use the hook
+1. Install the drape package via `uv tool install`
+2. Configure `.claude/settings.json` to use the `drape-hook` command
 3. Verify installation
 
 ### Manual Installation
@@ -35,8 +37,10 @@ If you prefer to do it manually:
 
 **1. Install the package:**
 ```bash
-pip install drape
+uv tool install drape
 ```
+
+This places `drape` and `drape-hook` on your PATH (by default in `~/.local/bin`). If they aren't found, run `uv tool update-shell` once.
 
 **2. Update `.claude/settings.json`:**
 Add this to your Claude Code project config:
@@ -50,7 +54,7 @@ Add this to your Claude Code project config:
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m drape.hook"
+            "command": "drape-hook"
           }
         ]
       }
@@ -104,15 +108,7 @@ This approach is safe because:
 
 ### Mask Pattern
 
-To use a different pattern (e.g., first 5 chars), edit the installed drape:
-
-```bash
-pip show drape  # Find installation path
-# Edit: {install_path}/drape/masker.py
-# Change: masked = value[:3] + "..."  →  masked = value[:5] + "..."
-```
-
-Or set a local override in `.claude/settings.json`:
+The reveal length is controlled by `DRAPE_PREFIX_CHARS` (default `3`). Set it as an environment variable for the hook command in `.claude/settings.json`:
 
 ```json
 {
@@ -123,7 +119,7 @@ Or set a local override in `.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c 'import sys, json; ...'"
+            "command": "DRAPE_PREFIX_CHARS=5 drape-hook"
           }
         ]
       }
@@ -131,6 +127,8 @@ Or set a local override in `.claude/settings.json`:
   }
 }
 ```
+
+See the README's "Configuration" section for the full list of env vars (`DRAPE_ENTROPY_THRESHOLD`, `DRAPE_HOOK_PATTERNS`, `DRAPE_AUDIT_LOG`, `DRAPE_LOG_LEVEL`).
 
 ### File Patterns
 
@@ -143,8 +141,8 @@ https://github.com/pike00/drape/issues
 
 **Hook not firing?**
 - Restart Claude Code (settings.json changes require reload)
-- Check that `.claude/settings.json` has valid JSON: `python3 -m json.tool .claude/settings.json`
-- Verify drape is installed: `python3 -m drape.hook --version`
+- Check that `.claude/settings.json` has valid JSON: `uvx --quiet python -m json.tool .claude/settings.json`
+- Verify drape is installed: `uv tool list | grep drape` and `which drape-hook`
 
 **Seeing raw secrets instead of masked values?**
 - Ensure the hook is in `.claude/settings.json` under `PreToolUse` (not `PostToolUse`)
@@ -152,7 +150,7 @@ https://github.com/pike00/drape/issues
 - Verify file matches `.env` pattern (not `.env.example`)
 
 **Hook has an error?**
-- Test manually: `echo '{"tool_input":{"file_path":".env"}}' | python3 -m drape.hook`
+- Test manually: `echo '{"tool_input":{"file_path":".env"}}' | drape-hook`
 - Should output JSON with `hookSpecificOutput` field
 
 ## Security Notes
@@ -173,7 +171,7 @@ See [docs/architecture.md](architecture.md) for detailed threat model.
 
 **Uninstall the package:**
 ```bash
-pip uninstall drape
+uv tool uninstall drape
 ```
 
 ## Next Steps

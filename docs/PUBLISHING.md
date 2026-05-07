@@ -7,7 +7,7 @@ This document outlines the steps to publish drape.
 - GitHub account with a new empty repository
 - PyPI account (https://pypi.org/account/register/)
 - GitHub personal access token with repo + write:packages permissions
-- Build tools: `uv` (recommended) or `pip install twine build`
+- [uv](https://docs.astral.sh/uv/) installed (used for both build and publish)
 
 ## Step 1: Initialize Git Repository
 
@@ -48,17 +48,9 @@ Then on GitHub:
 ### Option A: Manual Upload (with uv)
 
 ```bash
-uv build  # Creates dist/drape-0.1.0-py3-none-any.whl and dist/drape-0.1.0.tar.gz
-uv pip install twine
-uv run twine upload dist/*
-# Enter PyPI username and password when prompted
-```
-
-Or with pip/build:
-```bash
-pip install build twine
-python -m build
-twine upload dist/*
+uv build                          # Creates dist/drape-X.Y.Z-py3-none-any.whl and dist/drape-X.Y.Z.tar.gz
+UV_PUBLISH_TOKEN=<pypi-token> uv publish
+# or: uv publish --token <pypi-token>
 ```
 
 ### Option B: Automated (GitHub Actions)
@@ -77,10 +69,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
-      - run: pip install build twine
-      - run: python -m build
-      - run: twine upload dist/* -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
+      - uses: astral-sh/setup-uv@v3
+      - run: uv build
+      - run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
 ```
 
 Then:
@@ -94,7 +85,7 @@ Then:
 After publishing to PyPI:
 
 ```bash
-pip install drape
+uv tool install drape
 drape --version
 ```
 

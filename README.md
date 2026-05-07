@@ -71,11 +71,20 @@ Surrounding quotes are stripped before any of this, so `KEY="abcd"` reveals char
 
 ## Installation
 
+drape is distributed as a [uv](https://docs.astral.sh/uv/) tool — install once, run from anywhere:
+
 ```bash
-pip install drape                 # core (.env + .env.sops)
-pip install 'drape[yaml]'         # + YAML support
-pip install 'drape[toml]'         # + TOML on Python <3.11
-pip install 'drape[all]'          # everything
+uv tool install drape                 # core (.env + .env.sops)
+uv tool install 'drape[yaml]'         # + YAML support
+uv tool install 'drape[toml]'         # + TOML on Python <3.11
+uv tool install 'drape[all]'          # everything
+```
+
+To run without installing:
+
+```bash
+uvx drape .env
+uvx --from 'drape[all]' drape --format yaml config/secrets.yaml
 ```
 
 Or from source:
@@ -83,10 +92,10 @@ Or from source:
 ```bash
 git clone https://github.com/pike00/drape.git
 cd drape
-pip install .
+uv tool install .
 ```
 
-Requires Python 3.9+. SOPS support requires the [`sops`](https://github.com/getsops/sops) binary on `$PATH`.
+Requires Python 3.9+ (uv manages this automatically). SOPS support requires the [`sops`](https://github.com/getsops/sops) binary on `$PATH`.
 
 ## Usage
 
@@ -111,7 +120,7 @@ Format auto-detects from filename for `.env`, `.env.sops`, `.yaml`, `.yml`, `.js
 drape ships a [PreToolUse hook](https://docs.claude.com/en/docs/agents-and-tools/claude-code/hooks) that intercepts file reads before they reach the model. Install once per project:
 
 ```bash
-pip install drape
+uv tool install drape
 bash scripts/install-claude-hook.sh --project-dir /path/to/project
 ```
 
@@ -242,10 +251,10 @@ Output is always rendered as flat `dotted.path=masked` lines so the LLM sees one
 git clone https://github.com/pike00/drape.git
 cd drape
 uv sync --group dev          # install dev deps
-.venv/bin/pytest             # 64 tests, ~1s
-.venv/bin/pytest --cov       # with coverage report (target: ≥84%)
-.venv/bin/ruff check src tests
-.venv/bin/black --check src tests
+uv run pytest                # 64 tests, ~1s
+uv run pytest --cov          # with coverage report (target: ≥84%)
+uv run ruff check src tests
+uv run black --check src tests
 ```
 
 The test suite covers: masker logic, all detect-secrets pattern integrations, entropy thresholds, structured-format walkers, SOPS dispatch (with the `sops` binary stubbed), the Claude hook (Read / Grep / Bash variants), audit log emission, and CLI argument parsing.
