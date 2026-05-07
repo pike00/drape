@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -10,7 +10,21 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
 authors = [{ name = "Will Pike", email = "will@khanpikehome.com" }]
-keywords = ["environment", "secrets", "masking", "LLM", "Claude", "security", "sops"]
+maintainers = [{ name = "Will Pike", email = "will@khanpikehome.com" }]
+keywords = [
+    "secrets",
+    "masking",
+    "redaction",
+    "environment",
+    "dotenv",
+    "sops",
+    "llm",
+    "claude",
+    "claude-code",
+    "ai-safety",
+    "security",
+    "detect-secrets",
+]
 dependencies = [
     "detect-secrets>=1.5.0",
     "loguru>=0.7",
@@ -19,22 +33,34 @@ dependencies = [
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
+    "Environment :: Console",
     "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Shells",
     "Topic :: Utilities",
-    "Topic :: Security",
+    "Typing :: Typed",
 ]
 
 [project.urls]
 Homepage = "https://github.com/pike00/drape"
 Repository = "https://github.com/pike00/drape.git"
 Issues = "https://github.com/pike00/drape/issues"
+Changelog = "https://github.com/pike00/drape/blob/main/CHANGELOG.md"
 Documentation = "https://github.com/pike00/drape/blob/main/docs/"
 Roadmap = "https://github.com/pike00/drape/blob/main/docs/ROADMAP.md"
 Publishing = "https://github.com/pike00/drape/blob/main/docs/PUBLISHING.md"
@@ -51,6 +77,18 @@ all = ["PyYAML>=6.0", "tomli>=2.0; python_version<'3.11'"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/drape"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/drape",
+    "tests",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=7.0",
@@ -60,6 +98,7 @@ dev = [
     "black>=23.0",
     "mypy>=1.0",
     "ruff>=0.1",
+    "twine>=5.0",
 ]
 
 [tool.pytest.ini_options]

@@ -1,108 +1,132 @@
-# Publishing drape to GitHub and PyPI
+# Publishing drape
 
-This document outlines the steps to publish drape.
+drape is published to [PyPI](https://pypi.org/project/drape/) via GitHub
+Actions using **trusted publishing (OIDC)**. There is no long-lived PyPI token
+in the repo or in any environment variable — every release exchanges a
+short-lived OIDC identity for a one-shot upload token.
 
-## Prerequisites
+## Architecture
 
-- GitHub account with a new empty repository
-- PyPI account (https://pypi.org/account/register/)
-- GitHub personal access token with repo + write:packages permissions
-- [uv](https://docs.astral.sh/uv/) installed (used for both build and publish)
+```
+git push tag v0.x.y
+        │
+        ▼
+.github/workflows/release.yml
+   ├── build:   uv build  →  twine check  →  upload artifact
+   └── publish: download artifact → pypa/gh-action-pypi-publish
+                (job runs in `pypi` environment, requires reviewer approval)
+```
 
-## Step 1: Initialize Git Repository
+Two boundaries protect a release:
+
+1. **PyPI trusted publisher** restricts uploads to the exact
+   `pike00/drape` repo + `release.yml` workflow + `pypi` environment.
+2. **GitHub `pypi` environment** requires a manual approval click and only
+   runs against tags matching `v*.*.*`.
+
+## One-time setup (already done)
+
+These are recorded for posterity / disaster recovery — re-run only if the
+publisher or environment is deleted.
+
+### 1. Register the trusted publisher on PyPI
+
+https://pypi.org/manage/project/drape/settings/publishing/ → **Add a new
+publisher** → GitHub:
+
+| Field              | Value                          |
+| ------------------ | ------------------------------ |
+| Owner              | `pike00`                       |
+| Repository         | `drape`                        |
+| Workflow filename  | `release.yml`                  |
+| Environment name   | `pypi`                         |
+
+### 2. Configure the GitHub `pypi` environment
+
+Done via `gh api`; equivalent to repo Settings → Environments → `pypi`:
+
+- Required reviewer: `pike00`
+- Deployment branch policy: tags matching `v*.*.*` only
 
 ```bash
-cd drape
-git init
-git config user.name "Your Name"
-git config user.email "your.email@example.com"
-git add .
-git commit -m "Initial commit: drape v0.1.0"
-git branch -M main
+gh api -X PUT repos/pike00/drape/environments/pypi --input - <<'EOF'
+{
+  "wait_timer": 0,
+  "prevent_self_review": false,
+  "reviewers": [{"type": "User", "id": 6687499}],
+  "deployment_branch_policy": {
+    "protected_branches": false,
+    "custom_branch_policies": true
+  }
+}
+EOF
+
+gh api -X POST repos/pike00/drape/environments/pypi/deployment-branch-policies \
+  -f name='v*.*.*' -f type='tag'
 ```
 
-## Step 2: Add GitHub Remote
+## Cutting a release
 
-```bash
-git remote add origin https://github.com/pike00/drape.git
-git push -u origin main
-```
+1. Bump `version` in `pyproject.toml`.
+2. Update `CHANGELOG.md` with the new version's notes.
+3. Commit:
 
-## Step 3: Create GitHub Release
+   ```bash
+   git commit -am "release: vX.Y.Z"
+   git push
+   ```
 
-```bash
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
-```
+4. Tag and push:
 
-Then on GitHub:
-1. Go to https://github.com/pike00/drape/releases
-2. Click "Draft a new release"
-3. Select tag `v0.1.0`
-4. Add release notes from [CHANGELOG.md](../CHANGELOG.md)
-5. Check "Set as the latest release"
-6. Publish
+   ```bash
+   git tag -a vX.Y.Z -m "Release vX.Y.Z"
+   git push origin vX.Y.Z
+   ```
 
-## Step 4: Publish to PyPI
+5. The tag push triggers `.github/workflows/release.yml`. The workflow:
+   - Verifies the tag matches `pyproject.toml`'s version.
+   - Builds `sdist` + `wheel` with `uv build`.
+   - Runs `twine check` against the artifacts.
+   - Pauses on the `pypi` environment for your approval.
+   - Approve the deployment in the GitHub UI (Actions tab → run → "Review
+     deployments") to publish.
 
-### Option A: Manual Upload (with uv)
+6. Draft GitHub release notes (optional but recommended):
 
-```bash
-uv build                          # Creates dist/drape-X.Y.Z-py3-none-any.whl and dist/drape-X.Y.Z.tar.gz
-UV_PUBLISH_TOKEN=<pypi-token> uv publish
-# or: uv publish --token <pypi-token>
-```
+   ```bash
+   gh release create vX.Y.Z --notes-from-tag
+   ```
 
-### Option B: Automated (GitHub Actions)
-
-Add this to `.github/workflows/publish.yml`:
-
-```yaml
-name: Publish to PyPI
-
-on:
-  release:
-    types: [published]
-
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-      - run: uv build
-      - run: uv publish --token ${{ secrets.PYPI_API_TOKEN }}
-```
-
-Then:
-1. Create PyPI API token at https://pypi.org/account/manage/
-2. Add to GitHub repo settings: Settings → Secrets and variables → Actions
-3. New secret: `PYPI_API_TOKEN` = your PyPI token
-4. Release a new version on GitHub (triggers workflow)
-
-## Step 5: Verify Installation
-
-After publishing to PyPI:
+## Verifying a release
 
 ```bash
 uv tool install drape
 drape --version
 ```
 
-## Future Updates
+PyPI usually serves new versions within ~30 seconds; the project page caches
+for a few minutes:
 
-To release a new version (e.g., v0.2.0):
+- Project: https://pypi.org/project/drape/
+- Versions: https://pypi.org/project/drape/#history
 
-1. Update `version` in `pyproject.toml`
-2. Update `CHANGELOG.md`
-3. Commit: `git commit -am "Release v0.2.0"`
-4. Tag: `git tag -a v0.2.0 -m "Release v0.2.0"`
-5. Push: `git push origin main && git push origin v0.2.0`
-6. Create release on GitHub (auto-publishes to PyPI if workflow is set up)
+## Disaster recovery
 
-## Notes
+If trusted publishing is broken (PyPI publisher deleted, repo renamed, etc.)
+and you need to push a release manually:
 
-- First release to PyPI may take 5-10 minutes to appear
-- Subsequent releases cache for ~5 minutes
-- You can view package stats at https://pypi.org/project/drape/
-- Yank old versions if needed: https://pypi.org/project/drape/#history
+```bash
+uv build
+UV_PUBLISH_TOKEN='pypi-...' uv publish
+```
+
+Generate a temporary token at https://pypi.org/manage/account/token/ scoped
+to the `drape` project, **revoke it immediately** after the release, and
+re-establish trusted publishing per "One-time setup" above. Long-lived
+tokens are not the supported path.
+
+## History
+
+- **v0.1.0 / v0.2.0** — published manually with a project-scoped PyPI API
+  token (now revoked). Tag `v0.2.0` predates this workflow.
+- **v0.3.0+** — published via OIDC trusted publishing as described here.
