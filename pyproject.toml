@@ -9,8 +9,8 @@ description = "Mask secrets in .env / SOPS / YAML / JSON / TOML files for safe L
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
-authors = [{ name = "Will Pike", email = "will@khanpikehome.com" }]
-maintainers = [{ name = "Will Pike", email = "will@khanpikehome.com" }]
+authors = [{ name = "Will Pike", email = "pypi-public@wpike.com" }]
+maintainers = [{ name = "Will Pike", email = "pypi-public@wpike.com" }]
 keywords = [
     "secrets",
     "masking",
