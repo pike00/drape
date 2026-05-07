@@ -271,7 +271,20 @@ Tag: $new_tag    Commits: ${last_tag:-<root>}..HEAD
 -->
 EOF
 
-"${EDITOR:-vim}" "$tmp"
+editor="${VISUAL:-${EDITOR:-}}"
+if [ -z "$editor" ]; then
+    for candidate in nano vim vi; do
+        if command -v "$candidate" >/dev/null; then
+            editor="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$editor" ]; then
+    echo "error: no editor found. Set \$EDITOR or install nano/vim/vi." >&2
+    exit 1
+fi
+"$editor" "$tmp"
 
 # Strip HTML comment blocks, split on first '---' separator line.
 cleaned=$(sed '/<!--/,/-->/d' "$tmp")
