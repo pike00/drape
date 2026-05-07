@@ -15,14 +15,8 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      - name: Verify tag matches pyproject.toml version
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          pkg=$(grep -m1 -E '^version\s*=' pyproject.toml | sed -E 's/version\s*=\s*"([^"]+)"/\1/')
-          if [ "$tag" != "$pkg" ]; then
-            echo "::error::Tag v$tag does not match pyproject.toml version $pkg"
-            exit 1
-          fi
+      - name: Set version from tag
+        run: uv version "${GITHUB_REF_NAME#v}"
       - run: uv build
       - run: uvx --from twine twine check dist/*
       - uses: actions/upload-artifact@v4
