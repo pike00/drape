@@ -35,13 +35,19 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     exit 1
 fi
 
-git fetch --quiet origin main
+echo "==> Syncing with origin (branch + tags)…"
+git fetch --quiet --prune --prune-tags --tags origin main
+# Push any local-only tags up; non-fast-forward tag updates are rejected
+# without --force, so this is safe.
+git push --quiet --tags origin 2>/dev/null || true
+
 local_sha=$(git rev-parse HEAD)
 remote_sha=$(git rev-parse origin/main)
 if [ "$local_sha" != "$remote_sha" ]; then
     echo "error: local main is not in sync with origin/main" >&2
     echo "  local : $local_sha" >&2
     echo "  origin: $remote_sha" >&2
+    echo "  hint  : 'git pull --rebase && git push' first" >&2
     exit 1
 fi
 
@@ -128,10 +134,18 @@ schema='{
 }'
 
 echo "==> Drafting notes with Claude…"
-draft_json=$(printf '%s' "$prompt" | claude -p --bare --json-schema "$schema")
+draft_response=$(printf '%s' "$prompt" | claude -p \
+    --output-format json \
+    --json-schema "$schema")
 
-title=$(printf '%s' "$draft_json" | jq -r '.title')
-body=$(printf '%s' "$draft_json" | jq -r '.body')
+title=$(printf '%s' "$draft_response" | jq -r '.structured_output.title // empty')
+body=$(printf '%s' "$draft_response" | jq -r '.structured_output.body // empty')
+
+if [ -z "$title" ] || [ -z "$body" ]; then
+    echo "error: claude returned no structured output" >&2
+    printf '%s' "$draft_response" | jq '.' >&2 || printf '%s\n' "$draft_response" >&2
+    exit 1
+fi
 
 # --- Review ------------------------------------------------------------------
 
