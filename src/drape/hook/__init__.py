@@ -17,47 +17,73 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Callable, Literal, Optional
 
 from loguru import logger
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..audit import audit
 from ..formats import detect_format, parse_structured_file
-from ..masker import DEFAULT_ENTROPY_THRESHOLD, DEFAULT_PREFIX_CHARS, parse_env_file
+from ..masker import parse_env_file
+from ..settings import DrapeSettings, MaskConfig
 from ..sops import SopsDecryptError, parse_sops_env_file
 
 logger.remove()  # hook context: stay silent — never write to stderr from inside Claude
 
-ENV_PREFIX_CHARS = "DRAPE_PREFIX_CHARS"
-ENV_ENTROPY_THRESHOLD = "DRAPE_ENTROPY_THRESHOLD"
-ENV_HOOK_PATTERNS = "DRAPE_HOOK_PATTERNS"  # extra glob patterns, comma-separated
+
+# --- Pydantic models for hook payload ----------------------------------------
 
 
-def _prefix_chars() -> int:
-    raw = os.environ.get(ENV_PREFIX_CHARS)
-    if raw is None:
-        return DEFAULT_PREFIX_CHARS
-    try:
-        v = int(raw)
-    except ValueError:
-        return DEFAULT_PREFIX_CHARS
-    return v if v >= 1 else DEFAULT_PREFIX_CHARS
+class _ToolInput(BaseModel):
+    """Base for tool inputs. ``extra="allow"`` so we don't reject fields the
+    Claude tool layer adds in newer versions."""
+
+    model_config = ConfigDict(extra="allow")
 
 
-def _entropy_threshold() -> float:
-    raw = os.environ.get(ENV_ENTROPY_THRESHOLD)
-    if raw is None:
-        return DEFAULT_ENTROPY_THRESHOLD
-    try:
-        v = float(raw)
-    except ValueError:
-        return DEFAULT_ENTROPY_THRESHOLD
-    return v if v >= 0.0 else DEFAULT_ENTROPY_THRESHOLD
+class ReadToolInput(_ToolInput):
+    file_path: str = ""
 
 
-def _extra_patterns() -> list[str]:
-    raw = os.environ.get(ENV_HOOK_PATTERNS, "")
-    return [p.strip() for p in raw.split(",") if p.strip()]
+class BashToolInput(_ToolInput):
+    command: str = ""
+
+
+class GrepToolInput(_ToolInput):
+    pattern: str = ""
+    path: Optional[str] = None
+    paths: Optional[list[str]] = None
+
+    def all_paths(self) -> list[str]:
+        out: list[str] = []
+        if self.path:
+            out.append(self.path)
+        if self.paths:
+            out.extend(p for p in self.paths if isinstance(p, str))
+        return out
+
+
+class HookPayload(BaseModel):
+    """Top-level Claude PreToolUse payload. Tool input stays as raw dict
+    here so each handler can re-validate against its own typed model."""
+
+    model_config = ConfigDict(extra="allow")
+
+    tool_name: str = ""
+    tool_input: dict = Field(default_factory=dict)
+
+
+class HookSpecificOutput(BaseModel):
+    hookEventName: Literal["PreToolUse"] = "PreToolUse"
+    permissionDecision: Literal["deny", "allow", "ask"]
+    permissionDecisionReason: str
+
+
+class HookResponse(BaseModel):
+    hookSpecificOutput: HookSpecificOutput
+
+
+# --- Filename / pattern matching ---------------------------------------------
 
 
 def _basename_match_env(basename: str) -> bool:
@@ -78,7 +104,6 @@ def _basename_excluded(basename: str) -> bool:
     excluded_suffixes = (".example", ".sample", ".template")
     if any(b.endswith(f".env{s}") for s in excluded_suffixes):
         return True
-    # .env.json / .env.yaml etc. — handled by their own format if requested
     return b.endswith((".env.json", ".env.yaml", ".env.yml", ".env.toml"))
 
 
@@ -90,48 +115,14 @@ def should_mask(filepath: str) -> bool:
         return False
     if _basename_match_env(basename):
         return True
-    # User-provided extra glob patterns (e.g. "*.secrets.yaml,credentials.json")
-    for pattern in _extra_patterns():
+    for pattern in DrapeSettings().hook_patterns:
         if p.match(pattern):
             return True
     return False
 
 
-def _mask_file(filepath: Path) -> Optional[str]:
-    """Return masked rendering or None on any error."""
-    fmt = detect_format(filepath)
-    pc = _prefix_chars()
-    et = _entropy_threshold()
-    try:
-        if fmt == "sops":
-            lines = parse_sops_env_file(
-                filepath, prefix_chars=pc, entropy_threshold=et, use_patterns=True
-            )
-        elif fmt in ("yaml", "json", "toml"):
-            lines = parse_structured_file(
-                filepath, fmt=fmt, prefix_chars=pc, entropy_threshold=et, use_patterns=True
-            )
-        else:
-            lines = parse_env_file(
-                filepath, prefix_chars=pc, entropy_threshold=et, use_patterns=True
-            )
-    except (FileNotFoundError, SopsDecryptError, Exception):
-        return None
-
-    audit(
-        "hook_mask",
-        tool=os.environ.get("_DRAPE_HOOK_TOOL", "Read"),
-        file=str(filepath),
-        format=fmt,
-        key_count=len(lines),
-        prefix_chars=pc,
-    )
-    return "\n".join(lines)
-
-
 # --- Bash command detection ---------------------------------------------------
 
-# Match commands that read a .env file directly. Crude but effective.
 _BASH_DIRECT_READ = re.compile(
     r"\b(cat|bat|head|tail|less|more|nl|tac)\b[^|;&]*?(\.env(?:\.sops)?(?:\.[a-z]+)?)\b",
     re.IGNORECASE,
@@ -150,24 +141,53 @@ def _bash_targets_env(command: str) -> Optional[str]:
     return None
 
 
-# --- Tool dispatch ------------------------------------------------------------
+# --- Mask dispatch ------------------------------------------------------------
 
 
-def _deny(reason: str) -> dict[str, Any]:
-    return {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-        }
-    }
+def _mask_file(filepath: Path, config: MaskConfig, tool_name: str) -> Optional[str]:
+    """Return masked rendering or None on any error."""
+    fmt = detect_format(filepath)
+    try:
+        if fmt == "sops":
+            lines = parse_sops_env_file(filepath, config=config)
+        elif fmt in ("yaml", "json", "toml"):
+            lines = parse_structured_file(filepath, fmt=fmt, config=config)
+        else:
+            lines = parse_env_file(filepath, config=config)
+    except (FileNotFoundError, SopsDecryptError, Exception):
+        return None
+
+    audit(
+        "hook_mask",
+        tool=tool_name,
+        file=str(filepath),
+        format=fmt,
+        key_count=len(lines),
+        prefix_chars=config.prefix_chars,
+    )
+    return "\n".join(lines)
 
 
-def _handle_read(tool_input: dict[str, Any]) -> Optional[dict[str, Any]]:
-    filepath = tool_input.get("file_path", "")
+def _deny(reason: str) -> HookResponse:
+    return HookResponse(
+        hookSpecificOutput=HookSpecificOutput(
+            permissionDecision="deny",
+            permissionDecisionReason=reason,
+        )
+    )
+
+
+# --- Per-tool handlers --------------------------------------------------------
+
+
+def _handle_read(
+    tool_input: dict, config: MaskConfig, tool_name: str
+) -> Optional[HookResponse]:
+    parsed = ReadToolInput.model_validate(tool_input)
+    filepath = parsed.file_path
     if not filepath or not should_mask(filepath) or not os.path.isfile(filepath):
         return None
-    masked = _mask_file(Path(filepath))
+    masked = _mask_file(Path(filepath), config, tool_name)
     if masked is None:
         return None
     return _deny(
@@ -176,29 +196,22 @@ def _handle_read(tool_input: dict[str, Any]) -> Optional[dict[str, Any]]:
     )
 
 
-def _handle_grep(tool_input: dict[str, Any]) -> Optional[dict[str, Any]]:
-    # Grep tool inputs vary by version; check both `path` and `paths`.
-    targets: list[str] = []
-    for k in ("path", "paths"):
-        v = tool_input.get(k)
-        if isinstance(v, str):
-            targets.append(v)
-        elif isinstance(v, list):
-            targets.extend(t for t in v if isinstance(t, str))
-
-    sensitive = [t for t in targets if should_mask(t) and os.path.isfile(t)]
+def _handle_grep(
+    tool_input: dict, config: MaskConfig, tool_name: str
+) -> Optional[HookResponse]:
+    parsed = GrepToolInput.model_validate(tool_input)
+    sensitive = [t for t in parsed.all_paths() if should_mask(t) and os.path.isfile(t)]
     if not sensitive:
         return None
 
-    pattern = tool_input.get("pattern", "")
     try:
-        rx = re.compile(pattern) if pattern else None
+        rx = re.compile(parsed.pattern) if parsed.pattern else None
     except re.error:
         rx = None
 
     rendered: list[str] = []
     for path in sensitive:
-        masked = _mask_file(Path(path))
+        masked = _mask_file(Path(path), config, tool_name)
         if masked is None:
             continue
         if rx is None:
@@ -206,7 +219,7 @@ def _handle_grep(tool_input: dict[str, Any]) -> Optional[dict[str, Any]]:
         else:
             hits = [line for line in masked.splitlines() if rx.search(line)]
             rendered.append(
-                f"# {path} (masked by drape, grepped for {pattern!r})\n"
+                f"# {path} (masked by drape, grepped for {parsed.pattern!r})\n"
                 + ("\n".join(hits) if hits else "(no matches in masked content)")
             )
 
@@ -217,14 +230,16 @@ def _handle_grep(tool_input: dict[str, Any]) -> Optional[dict[str, Any]]:
     )
 
 
-def _handle_bash(tool_input: dict[str, Any]) -> Optional[dict[str, Any]]:
-    cmd = tool_input.get("command", "")
-    if not isinstance(cmd, str) or not cmd:
+def _handle_bash(
+    tool_input: dict, config: MaskConfig, tool_name: str
+) -> Optional[HookResponse]:
+    parsed = BashToolInput.model_validate(tool_input)
+    if not parsed.command:
         return None
-    target = _bash_targets_env(cmd)
+    target = _bash_targets_env(parsed.command)
     if target is None:
         return None
-    audit("hook_bash_block", file=target, command=cmd[:200])
+    audit("hook_bash_block", file=target, command=parsed.command[:200])
     return _deny(
         f"drape: this command would expose raw secrets from {target!r}. "
         f"Use `drape {target}` (or `drape --format auto {target}`) instead — "
@@ -232,7 +247,8 @@ def _handle_bash(tool_input: dict[str, Any]) -> Optional[dict[str, Any]]:
     )
 
 
-_DISPATCH = {
+_Handler = Callable[[dict, MaskConfig, str], Optional[HookResponse]]
+_DISPATCH: dict[str, _Handler] = {
     "Read": _handle_read,
     "Grep": _handle_grep,
     "Bash": _handle_bash,
@@ -241,24 +257,31 @@ _DISPATCH = {
 
 def main() -> None:
     try:
-        payload: dict[str, Any] = json.load(sys.stdin)
+        raw = json.load(sys.stdin)
     except json.JSONDecodeError:
         sys.exit(0)
 
-    tool_name = payload.get("tool_name", "")
-    tool_input = payload.get("tool_input", {}) or {}
-    handler = _DISPATCH.get(tool_name)
+    try:
+        payload = HookPayload.model_validate(raw)
+    except ValidationError:
+        sys.exit(0)
+
+    handler = _DISPATCH.get(payload.tool_name)
     if handler is None:
         sys.exit(0)
 
-    os.environ["_DRAPE_HOOK_TOOL"] = tool_name
     try:
-        response = handler(tool_input)
+        config = DrapeSettings().mask_config()
+    except ValidationError:
+        sys.exit(0)
+
+    try:
+        response = handler(payload.tool_input, config, payload.tool_name)
     except Exception:
         sys.exit(0)
     if response is None:
         sys.exit(0)
-    json.dump(response, sys.stdout)
+    sys.stdout.write(response.model_dump_json())
 
 
 if __name__ == "__main__":

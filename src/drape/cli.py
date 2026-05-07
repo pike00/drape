@@ -3,55 +3,30 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
+from typing import Literal, cast
 
 from loguru import logger
+from pydantic import ValidationError
 
 from . import __version__
 from .audit import audit
 from .formats import detect_format, parse_structured_file
-from .masker import DEFAULT_ENTROPY_THRESHOLD, DEFAULT_PREFIX_CHARS, parse_env_file
+from .masker import parse_env_file
+from .settings import DEFAULT_ENTROPY_THRESHOLD, DEFAULT_PREFIX_CHARS, DrapeSettings, MaskConfig
 from .sops import SopsDecryptError, parse_sops_env_file
 
-ENV_PREFIX_CHARS = "DRAPE_PREFIX_CHARS"
-ENV_ENTROPY_THRESHOLD = "DRAPE_ENTROPY_THRESHOLD"
+Format = Literal["auto", "env", "sops", "yaml", "json", "toml"]
+ResolvedFormat = Literal["env", "sops", "yaml", "json", "toml"]
 
 
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    try:
-        v = int(raw)
-    except ValueError:
-        logger.warning("{}={!r} is not an integer; using {}", name, raw, default)
-        return default
-    return v if v >= 1 else default
-
-
-def _env_float(name: str, default: float) -> float:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    try:
-        v = float(raw)
-    except ValueError:
-        logger.warning("{}={!r} is not a float; using {}", name, raw, default)
-        return default
-    return v if v >= 0.0 else default
-
-
-def _configure_logging() -> None:
-    level = os.environ.get("DRAPE_LOG_LEVEL", "INFO").upper()
+def _configure_logging(level: str) -> None:
     logger.remove()
     logger.add(sys.stderr, level=level, format="{message}")
 
 
-def main() -> None:
-    _configure_logging()
-
+def _build_parser(settings: DrapeSettings) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="drape",
         description="Mask secrets in .env / SOPS / YAML / JSON / TOML files for safe LLM inspection",
@@ -66,19 +41,20 @@ def main() -> None:
     parser.add_argument(
         "--prefix-chars",
         type=int,
-        default=_env_int(ENV_PREFIX_CHARS, DEFAULT_PREFIX_CHARS),
+        default=settings.prefix_chars,
         help=(
             f"Max leading chars to reveal (default: {DEFAULT_PREFIX_CHARS}, "
-            f"or ${ENV_PREFIX_CHARS}). Always capped at 25%% of value length, min 1."
+            f"or $DRAPE_PREFIX_CHARS). Always capped at 25%% of value length, min 1."
         ),
     )
     parser.add_argument(
         "--entropy-threshold",
         type=float,
-        default=_env_float(ENV_ENTROPY_THRESHOLD, DEFAULT_ENTROPY_THRESHOLD),
+        default=settings.entropy_threshold,
         help=(
             f"Shannon entropy bits/char below which values render as "
-            f"<low-entropy-secret> (default: {DEFAULT_ENTROPY_THRESHOLD}, or ${ENV_ENTROPY_THRESHOLD})"
+            f"<low-entropy-secret> (default: {DEFAULT_ENTROPY_THRESHOLD}, or "
+            f"$DRAPE_ENTROPY_THRESHOLD)"
         ),
     )
     parser.add_argument(
@@ -87,17 +63,38 @@ def main() -> None:
         help="Disable pattern-based credential type labels",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    return parser
 
+
+def main() -> None:
+    try:
+        settings = DrapeSettings()
+    except ValidationError as e:
+        sys.stderr.write(f"drape: invalid DRAPE_* environment: {e}\n")
+        sys.exit(2)
+    _configure_logging(settings.log_level)
+
+    parser = _build_parser(settings)
     args = parser.parse_args()
-    filepath = Path(args.file)
-    fmt = detect_format(filepath) if args.format == "auto" else args.format
 
-    if args.prefix_chars < 1:
-        logger.error("--prefix-chars must be >= 1, got {}", args.prefix_chars)
+    filepath = Path(args.file)
+    fmt = cast(
+        ResolvedFormat,
+        detect_format(filepath) if args.format == "auto" else args.format,
+    )
+
+    try:
+        config = MaskConfig(
+            prefix_chars=args.prefix_chars,
+            entropy_threshold=args.entropy_threshold,
+            use_patterns=not args.no_patterns,
+        )
+    except ValidationError as e:
+        logger.error("invalid options: {}", e)
         sys.exit(2)
 
     try:
-        lines = _dispatch(fmt, filepath, args)
+        lines = _dispatch(fmt, filepath, config)
     except FileNotFoundError as e:
         logger.error("{}", e)
         sys.exit(1)
@@ -113,26 +110,20 @@ def main() -> None:
         file=str(filepath),
         format=fmt,
         key_count=len(lines),
-        prefix_chars=args.prefix_chars,
+        prefix_chars=config.prefix_chars,
     )
 
     for line in lines:
         print(line)
 
 
-def _dispatch(fmt: str, filepath: Path, args: argparse.Namespace) -> list[str]:
-    use_patterns = not args.no_patterns
-    common = dict(
-        prefix_chars=args.prefix_chars,
-        entropy_threshold=args.entropy_threshold,
-        use_patterns=use_patterns,
-    )
+def _dispatch(fmt: ResolvedFormat, filepath: Path, config: MaskConfig) -> list[str]:
     if fmt == "env":
-        return parse_env_file(filepath, **common)
+        return parse_env_file(filepath, config=config)
     if fmt == "sops":
-        return parse_sops_env_file(filepath, **common)
+        return parse_sops_env_file(filepath, config=config)
     if fmt in ("yaml", "json", "toml"):
-        return parse_structured_file(filepath, fmt=fmt, **common)
+        return parse_structured_file(filepath, fmt=fmt, config=config)
     raise ValueError(f"Unknown format: {fmt}")
 
 

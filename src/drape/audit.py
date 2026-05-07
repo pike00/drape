@@ -7,31 +7,39 @@ Records *that* a file was masked, never the masked content. If
 
 from __future__ import annotations
 
-import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
+from pydantic import BaseModel, ConfigDict, Field
 
-ENV_AUDIT_LOG = "DRAPE_AUDIT_LOG"
+from .settings import DrapeSettings
+
+
+class AuditRecord(BaseModel):
+    """One JSONL audit entry. ``extra="allow"`` lets callers pass arbitrary
+    structured fields (file, key_count, format, ...) through to the log."""
+
+    model_config = ConfigDict(extra="allow")
+
+    ts: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")
+    )
+    event: str
 
 
 def audit(event: str, **fields: Any) -> None:
     """Append one JSONL record. Silent no-op if no log path is configured."""
-    log_path = os.environ.get(ENV_AUDIT_LOG)
-    if not log_path:
+    log_path = DrapeSettings().audit_log
+    if log_path is None:
         return
-    record = {
-        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "event": event,
-        **fields,
-    }
+
+    record = AuditRecord(event=event, **fields)
     try:
         path = Path(log_path).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a") as f:
-            f.write(json.dumps(record, separators=(",", ":")) + "\n")
+            f.write(record.model_dump_json() + "\n")
     except Exception as e:  # never let audit failure break the caller
         logger.debug("audit write failed: {}", e)

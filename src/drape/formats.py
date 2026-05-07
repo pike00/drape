@@ -11,13 +11,12 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Literal, Optional
 
-from .masker import (
-    DEFAULT_ENTROPY_THRESHOLD,
-    DEFAULT_PREFIX_CHARS,
-    mask_value,
-)
+from .masker import mask_value
+from .settings import DEFAULT_ENTROPY_THRESHOLD, DEFAULT_PREFIX_CHARS, MaskConfig
+
+StructuredFormat = Literal["yaml", "yml", "json", "toml"]
 
 # Substrings that, if present in a key (case-insensitive), trigger masking of
 # its value. Conservative defaults — extend via DRAPE_SECRET_KEYS env var.
@@ -51,31 +50,24 @@ def _walk(
     obj: Any,
     path: str,
     patterns: Iterable[str],
-    prefix_chars: int,
-    entropy_threshold: float,
-    use_patterns: bool,
+    config: MaskConfig,
     out: list[str],
 ) -> None:
     if isinstance(obj, dict):
         for k, v in obj.items():
             sub = f"{path}.{k}" if path else str(k)
             if isinstance(v, (dict, list)):
-                _walk(v, sub, patterns, prefix_chars, entropy_threshold, use_patterns, out)
+                _walk(v, sub, patterns, config, out)
             else:
                 rendered = "" if v is None else str(v)
                 if _key_looks_secret(str(k), patterns) and rendered:
-                    rendered = mask_value(
-                        rendered,
-                        prefix_chars=prefix_chars,
-                        entropy_threshold=entropy_threshold,
-                        use_patterns=use_patterns,
-                    )
+                    rendered = mask_value(rendered, config=config)
                 out.append(f"{sub}={rendered}")
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
             sub = f"{path}[{i}]"
             if isinstance(v, (dict, list)):
-                _walk(v, sub, patterns, prefix_chars, entropy_threshold, use_patterns, out)
+                _walk(v, sub, patterns, config, out)
             else:
                 # List items inherit the parent key's secret-ness — caught by
                 # the recursive frame above; here we just render as-is.
@@ -111,7 +103,7 @@ def _load_toml(filepath: Path) -> Any:
         return tomllib.load(f)
 
 
-_LOADERS = {
+_LOADERS: dict[str, Callable[[Path], Any]] = {
     "yaml": _load_yaml,
     "yml": _load_yaml,
     "json": _load_json,
@@ -126,6 +118,8 @@ def parse_structured_file(
     entropy_threshold: float = DEFAULT_ENTROPY_THRESHOLD,
     use_patterns: bool = True,
     secret_key_patterns: Iterable[str] = DEFAULT_SECRET_KEY_PATTERNS,
+    *,
+    config: Optional[MaskConfig] = None,
 ) -> list[str]:
     """Parse a YAML/JSON/TOML file and return masked dotted-path=value lines."""
     fmt = fmt.lower()
@@ -134,11 +128,14 @@ def parse_structured_file(
     if not filepath.exists():
         raise FileNotFoundError(f"File not found: {filepath}")
 
+    cfg = config or MaskConfig(
+        prefix_chars=prefix_chars,
+        entropy_threshold=entropy_threshold,
+        use_patterns=use_patterns,
+    )
     data = _LOADERS[fmt](filepath)
     out: list[str] = []
-    _walk(
-        data, "", secret_key_patterns, prefix_chars, entropy_threshold, use_patterns, out
-    )
+    _walk(data, "", secret_key_patterns, cfg, out)
     return out
 
 

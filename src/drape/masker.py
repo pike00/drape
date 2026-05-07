@@ -19,17 +19,21 @@ from __future__ import annotations
 import math
 from collections import Counter
 from pathlib import Path
+from typing import Optional
 
 from loguru import logger
 
 from .patterns import classify_secret
+from .settings import DEFAULT_ENTROPY_THRESHOLD, DEFAULT_PREFIX_CHARS, MaskConfig
 
-DEFAULT_PREFIX_CHARS = 3
-# Shannon entropy threshold (bits/char). Below this, the value is more like
-# English text or a structured identifier than a random secret — revealing a
-# prefix would leak meaningful information. Random base64 ~= 6.0, hex ~= 4.0,
-# English ~= 2-3, common passwords ~= 1.5-2.5.
-DEFAULT_ENTROPY_THRESHOLD = 3.0
+__all__ = [
+    "DEFAULT_ENTROPY_THRESHOLD",
+    "DEFAULT_PREFIX_CHARS",
+    "MaskConfig",
+    "mask_value",
+    "parse_env_file",
+    "shannon_entropy",
+]
 
 
 def shannon_entropy(value: str) -> float:
@@ -48,11 +52,34 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
+def _resolve_config(
+    config: Optional[MaskConfig],
+    prefix_chars: int,
+    entropy_threshold: float,
+    use_patterns: bool,
+) -> MaskConfig:
+    """Return ``config`` if given, else build one from kwargs.
+
+    Centralizes the kwargs→MaskConfig coercion so every public function in
+    this module accepts the same shape: an explicit ``MaskConfig`` *or* the
+    legacy keyword args.
+    """
+    if config is not None:
+        return config
+    return MaskConfig(
+        prefix_chars=prefix_chars,
+        entropy_threshold=entropy_threshold,
+        use_patterns=use_patterns,
+    )
+
+
 def mask_value(
     value: str,
     prefix_chars: int = DEFAULT_PREFIX_CHARS,
     entropy_threshold: float = DEFAULT_ENTROPY_THRESHOLD,
     use_patterns: bool = True,
+    *,
+    config: Optional[MaskConfig] = None,
 ) -> str:
     """Mask a secret value.
 
@@ -62,26 +89,30 @@ def mask_value(
       3. Pattern match (AWS, GitHub, Slack, Stripe, ...) → ``<credential-type>``.
       4. Low-entropy value → ``<low-entropy-secret>`` (no chars revealed).
       5. Otherwise reveal ``min(prefix_chars, max(1, len // 4))`` chars + ``...``.
+
+    Pass an explicit :class:`MaskConfig` via ``config=`` for the typed call
+    style; the keyword args are kept for backwards compatibility and are
+    coerced to a :class:`MaskConfig` internally.
     """
     if not value:
         return ""
-    if prefix_chars < 1:
-        raise ValueError(f"prefix_chars must be >= 1, got {prefix_chars}")
+
+    cfg = _resolve_config(config, prefix_chars, entropy_threshold, use_patterns)
 
     inner = _strip_quotes(value)
     if not inner:
         return ""
 
-    if use_patterns:
+    if cfg.use_patterns:
         label = classify_secret(inner)
         if label is not None:
             return label
 
-    if shannon_entropy(inner) < entropy_threshold:
+    if shannon_entropy(inner) < cfg.entropy_threshold:
         return "<low-entropy-secret>"
 
     max_visible = max(1, len(inner) // 4)
-    visible = min(prefix_chars, max_visible)
+    visible = min(cfg.prefix_chars, max_visible)
     return inner[:visible] + "..."
 
 
@@ -90,6 +121,8 @@ def parse_env_file(
     prefix_chars: int = DEFAULT_PREFIX_CHARS,
     entropy_threshold: float = DEFAULT_ENTROPY_THRESHOLD,
     use_patterns: bool = True,
+    *,
+    config: Optional[MaskConfig] = None,
 ) -> list[str]:
     """Parse a .env file and return masked KEY=VALUE lines.
 
@@ -100,6 +133,8 @@ def parse_env_file(
     if not filepath.exists():
         logger.error("File not found: {}", filepath)
         raise FileNotFoundError(f"File not found: {filepath}")
+
+    cfg = _resolve_config(config, prefix_chars, entropy_threshold, use_patterns)
 
     logger.debug("Parsing .env file: {}", filepath)
     lines: list[str] = []
@@ -118,15 +153,7 @@ def parse_env_file(
             key = key.strip()
             value = value.strip()
 
-            if value:
-                masked = mask_value(
-                    value,
-                    prefix_chars=prefix_chars,
-                    entropy_threshold=entropy_threshold,
-                    use_patterns=use_patterns,
-                )
-            else:
-                masked = ""
+            masked = mask_value(value, config=cfg) if value else ""
             lines.append(f"{key}={masked}")
 
     logger.debug(
