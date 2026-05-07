@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "Mask secrets in .env / SOPS / YAML / JSON / TOML files for safe LLM inspection"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 authors = [{ name = "Will Pike", email = "pypi-public@wpike.com" }]
 maintainers = [{ name = "Will Pike", email = "pypi-public@wpike.com" }]
 keywords = [
@@ -41,9 +41,6 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -71,8 +68,8 @@ drape-hook = "drape.hook:main"
 
 [project.optional-dependencies]
 yaml = ["PyYAML>=6.0"]
-toml = ["tomli>=2.0; python_version<'3.11'"]
-all = ["PyYAML>=6.0", "tomli>=2.0; python_version<'3.11'"]
+toml = []
+all = ["PyYAML>=6.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/drape"]
@@ -91,11 +88,10 @@ include = [
 
 [dependency-groups]
 dev = [
-    "pytest>=7.0",
+    "pytest>=9.0.3",
     "pytest-cov>=4.0",
     "PyYAML>=6.0",
-    "tomli>=2.0; python_version<'3.11'",
-    "black>=23.0",
+    "black>=26.3.1",
     "mypy>=1.0",
     "ruff>=0.1",
     "twine>=5.0",
@@ -120,10 +116,10 @@ exclude_lines = [
 
 [tool.black]
 line-length = 100
-target-version = ["py39"]
+target-version = ["py312"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]

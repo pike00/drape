@@ -34,6 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - KEY=VALUE format only (no YAML/JSON)
 - Fixed masking pattern (not customizable yet)
 
+## [Unreleased]
+
+### Changed
+
+- **Minimum Python bumped to 3.12.** Resolves all open Dependabot alerts
+  (black, pytest, python-dotenv, requests) — patched versions of those
+  packages dropped Python 3.9/3.10/3.11 support, so the lockfile was
+  pinned to vulnerable older releases on those branches. Drops the
+  `tomli` extras since `tomllib` is built into 3.11+.
+
 ## [0.2.0] - 2026-05-06
 
 ### Added
