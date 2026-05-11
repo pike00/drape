@@ -3,8 +3,8 @@ title: drape Roadmap Follow-up
 status: active
 repos: [drape]
 started: 2026-05-02
-last_updated: 2026-05-02
-next_step: Decide whether `.env.sops` in-memory decrypt+mask support belongs in v0.2.0 or v0.3.0; open issue on pike00/drape if pursued
+last_updated: 2026-05-10
+next_step: Plan v0.4.0 scope — remaining v0.2.0 items (file-pattern allowlist, custom masking patterns, hook env-var config, --debug flag, code coverage, type hints) plus Docker Compose env-var masking and multi-hook configs from v0.3.0
 ---
 
 # drape Roadmap Follow-up
@@ -17,24 +17,24 @@ Track ongoing development of drape beyond v0.1.0 — feature decisions, integrat
 
 ### v0.2.0 (target Q3 2026)
 
-- [ ] Decide v0.2.0 vs v0.3.0 placement for `.env.sops` in-memory decrypt + mask support
-- [ ] Open GitHub issue on pike00/drape for `.env.sops` support (if pursued)
+- [x] Decide v0.2.0 vs v0.3.0 placement for `.env.sops` in-memory decrypt + mask support (shipped in v0.2.0 via `src/drape/sops.py`)
+- [x] Open GitHub issue on pike00/drape for `.env.sops` support (moot — shipped directly in v0.2.0)
 - [ ] Implement `.env.local`, `.env.production`, `.env.staging` variant matching
 - [ ] Configurable file-pattern allowlist (which files the hook masks)
 - [ ] Custom masking patterns via config file (`mask_chars: 5`, `mask_pattern: "***"`)
 - [ ] Hook configuration via env vars
 - [ ] `--debug` flag + better error messages
-- [ ] Optional audit logging (log masked operations)
-- [ ] GitHub Actions CI/CD pipeline
-- [ ] Automated PyPI publishing on GitHub releases
+- [x] Optional audit logging (log masked operations) — `src/drape/audit.py`
+- [x] GitHub Actions CI/CD pipeline — `.github/workflows/release.yml`
+- [x] Automated PyPI publishing on GitHub releases — OIDC trusted publishing (commit a30ef3d)
 - [ ] Code coverage reports
 - [ ] 100% type hint coverage
 
 ### v0.3.0 (target Q4 2026)
 
-- [ ] YAML config file masking
-- [ ] JSON file masking (mask keys matching `password`, `api_key`, `token`, etc.)
-- [ ] TOML support
+- [x] YAML config file masking — `src/drape/formats.py`
+- [x] JSON file masking (mask keys matching `password`, `api_key`, `token`, etc.) — `src/drape/formats.py`
+- [x] TOML support — `src/drape/formats.py`
 - [ ] Docker Compose env-var masking
 - [ ] Multiple hook configurations per project
 
@@ -48,6 +48,13 @@ Track ongoing development of drape beyond v0.1.0 — feature decisions, integrat
 - [ ] Settings UI
 
 ## Session Log
+
+### 2026-05-10
+
+- Headless housekeeping pass (`/project-save-all`). README claimed v0.1.0 / 2026-04-09 quiet repo — reality: 13 commits since 2026-05-02, v0.2.0 and v0.3.1 both published to PyPI, GHA release workflow live with OIDC trusted publishing.
+- Checked off shipped items grounded in verified evidence: `.env.sops` decrypt+mask (`src/drape/sops.py`), audit logging (`src/drape/audit.py`), CI/CD pipeline (`.github/workflows/release.yml`), automated PyPI publishing (commit a30ef3d), and YAML/JSON/TOML support (`src/drape/formats.py`).
+- Bumped `last_updated` to 2026-05-10 and rewrote `next_step` — old one ("decide v0.2.0 vs v0.3.0 for sops support") moot since both versions shipped. New next step scopes v0.4.0.
+- Left unchanged (insufficient evidence): file-pattern allowlist, custom masking patterns, hook env-var config, `--debug` flag, code coverage, type hint coverage, `.env.local/.production/.staging` variants, Docker Compose env masking, multi-hook configs.
 
 ### 2026-05-02
 
