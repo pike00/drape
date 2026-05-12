@@ -124,3 +124,14 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
+
+[tool.release-kit]
+install_command_template = "uv tool install drape=={version}"
+voice_notes = """\
+precise, factual, no marketing language, no emoji, no exclamation points. \
+Write as if reviewers from a security-minded shop will read it.\
+"""
+extra_instructions = ""
+litellm_model = "deepseek-v4-pro-cloud"
+reasoning_effort = "low"
+changelog_path = "CHANGELOG.md"
