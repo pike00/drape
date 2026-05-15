@@ -23,3 +23,8 @@ check:
 fmt:
     uv run ruff check --fix .
     uv run black .
+
+# Cut a release. Build and PyPI publish happen automatically via GitHub Actions
+# OIDC after the tag push (release.yml). Alias: `just tag LEVEL`.
+ship level:
+    @just release {{level}}
