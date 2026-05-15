@@ -245,6 +245,29 @@ session     cookie        salt         signature
 
 Output is always rendered as flat `dotted.path=masked` lines so the LLM sees one consistent shape across all formats.
 
+## Release
+
+```bash
+just release patch          # patch | minor | major
+```
+
+This runs [release-kit](https://github.com/pike00/release-kit) `cut`, which:
+1. Preflights (clean tree on `main`, in sync with `origin`).
+2. Updates `CHANGELOG.md` via `git-cliff` (mechanical, commits → grouped sections per `cliff.toml`).
+3. Drafts the GitHub release body via LiteLLM (`deepseek-v4-pro-cloud`) and opens it in `$EDITOR`.
+4. Commits `CHANGELOG.md`, tags the commit, pushes, and runs `gh release create`.
+
+Pushing the `v*.*.*` tag triggers `.github/workflows/release.yml`, which is the only GitHub Actions workflow drape keeps: it builds the sdist + wheel and publishes to PyPI via OIDC trusted publishing (no API token in source). The PyPI page typically updates within a minute.
+
+Preview what will land without releasing:
+
+```bash
+just changelog-preview      # what git-cliff will write into CHANGELOG.md
+just notes-dry-run          # what the LLM will draft for the GH release body
+```
+
+`CHANGELOG.md` is generated; do not hand-edit it. To regenerate from full history (e.g. after editing `cliff.toml`), run `just changelog-backfill`.
+
 ## Development
 
 ```bash
