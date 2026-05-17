@@ -135,3 +135,7 @@ extra_instructions = ""
 litellm_model = "deepseek-v4-pro-cloud"
 reasoning_effort = "low"
 changelog_path = "CHANGELOG.md"
+
+# `just version` resolves prod from PyPI (latest published release).
+prod_source = "pypi"
+prod_pypi_name = "drape"
