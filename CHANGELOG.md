@@ -5,6 +5,25 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-05-19
+
+### Added
+- Feat: add ship recipe (release triggers PyPI publish via GHA OIDC) (868481b)
+
+### Documentation
+- Docs(README): release section explaining cliff + release-kit cut flow (84d90df)
+
+### Fixed
+- Fix: resolve __version__ from package metadata, not hardcoded string (22ade22)
+
+### Other
+- Just: standardize header to canonical Tier 2 block (a4dccee)
+- Release-kit: wire pypi prod resolver for published drape package (0f23ae8)
+- Release-kit: symlink cliff.toml + release.just to shared template (672748f)
+- Release: adopt git-cliff CHANGELOG + shared release.just (5cbca6b)
+- Release: migrate to release-kit (74ce5a7)
+- Projects: housekeeping roadmap-followup (6114108)
+
 ## [Unreleased]
 
 ### Other
