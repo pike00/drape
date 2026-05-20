@@ -132,7 +132,8 @@ precise, factual, no marketing language, no emoji, no exclamation points. \
 Write as if reviewers from a security-minded shop will read it.\
 """
 extra_instructions = ""
-litellm_model = "deepseek-v4-pro-cloud"
+model = "deepseek-v4-pro-cloud"
+base_url = "http://127.0.0.1:4000"
 reasoning_effort = "low"
 changelog_path = "CHANGELOG.md"
 
