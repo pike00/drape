@@ -134,3 +134,6 @@ dmypy.json
 .sops.yaml
 .env.sops
 .envrc
+
+# release-kit draft notes (working file, not committed)
+release-notes.json
