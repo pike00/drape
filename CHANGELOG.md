@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-05-20
+
+### Documentation
+- Docs(README): make demo + heuristic claims actually representative (963eb64)
+
+### Fixed
+- Fix(release-kit): correct model key name and add LiteLLM proxy base_url (73df813)
+
+### Other
+- Chore: gitignore release-notes.json draft file (35c77e8)
+- Build(deps): bump urllib3 from 2.6.3 to 2.7.0 (8149bb1)
+- Build(deps): bump urllib3 from 2.6.3 to 2.7.0 (0f56e7c)
+- Chore(deps): bump idna from 3.13 to 3.15 (67ba48e)
+- Chore(deps): bump idna from 3.13 to 3.15 (b12f2a5)
+
 ## [0.3.2] - 2026-05-19
 
 ### Added
