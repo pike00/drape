@@ -70,6 +70,28 @@ class TestBashDetection:
     def test_cat_other_file(self):
         assert _bash_targets_env("cat README.md") is None
 
+    def test_match_does_not_cross_newline(self):
+        # A `cat` of a non-secret file on one line must not match a `.env.sops`
+        # mentioned in an unrelated command on the next line. Regression for
+        # the false positive that blocked `drape .env.sops` diagnostics.
+        cmd = (
+            "echo '=== run-task.sh ===' && cat -n run-task.sh\n"
+            "echo '=== .env.sops keys ===' && drape .env.sops | sed 's/=.*/=<v>/'"
+        )
+        assert _bash_targets_env(cmd) is None
+
+    def test_match_does_not_cross_separator(self):
+        # `;` and `&&` delimit commands; a `cat` before one must not reach a
+        # `.env` filename after it.
+        assert _bash_targets_env("cat README.md; echo .env") is None
+        assert _bash_targets_env("cat README.md && echo .env.sops") is None
+
+    def test_real_cat_env_still_blocked_among_other_commands(self):
+        # The guard must still fire when a command genuinely reads a secrets
+        # file, even alongside unrelated commands.
+        cmd = "cd /tmp\ncat .env.sops\necho done"
+        assert _bash_targets_env(cmd) == ".env.sops"
+
 
 def _run_hook(payload: dict) -> dict:
     buf = io.StringIO()
