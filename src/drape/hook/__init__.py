@@ -123,12 +123,17 @@ def should_mask(filepath: str) -> bool:
 
 # --- Bash command detection ---------------------------------------------------
 
+# The gap between the command name and the .env filename must not cross a
+# command boundary, or we get false positives like `cat run-task.sh` on one
+# line matching a `.env.sops` mentioned in an `echo` string on the next line.
+# `|`, `;`, `&` (covering `&&`/`||`) and newlines all delimit commands, so the
+# gap class excludes every one of them.
 _BASH_DIRECT_READ = re.compile(
-    r"\b(cat|bat|head|tail|less|more|nl|tac)\b[^|;&]*?(\.env(?:\.sops)?(?:\.[a-z]+)?)\b",
+    r"\b(cat|bat|head|tail|less|more|nl|tac)\b[^|;&\r\n]*?(\.env(?:\.sops)?(?:\.[a-z]+)?)\b",
     re.IGNORECASE,
 )
 _BASH_GREP_LIKE = re.compile(
-    r"\b(grep|rg|ag|ack|sed|awk|cut|column)\b[^|;&]*?(\.env(?:\.sops)?(?:\.[a-z]+)?)\b",
+    r"\b(grep|rg|ag|ack|sed|awk|cut|column)\b[^|;&\r\n]*?(\.env(?:\.sops)?(?:\.[a-z]+)?)\b",
     re.IGNORECASE,
 )
 
