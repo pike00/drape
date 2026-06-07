@@ -51,7 +51,9 @@ def test_json_masks_secret_keys_only():
         assert "database.host=db.example.com" in joined
         assert "service=api" in joined
         # Secret keys masked.
-        assert any(line.startswith("database.password=") and HIGH_ENTROPY not in line for line in out)
+        assert any(
+            line.startswith("database.password=") and HIGH_ENTROPY not in line for line in out
+        )
         assert any(line.startswith("client_secret=") and HIGH_ENTROPY not in line for line in out)
     finally:
         path.unlink()
@@ -72,10 +74,7 @@ def test_json_nested_lists():
 def test_yaml_format():
     pytest.importorskip("yaml")
     content = (
-        "service: api\n"
-        "database:\n"
-        f"  password: {HIGH_ENTROPY}\n"
-        "  host: db.example.com\n"
+        "service: api\n" "database:\n" f"  password: {HIGH_ENTROPY}\n" "  host: db.example.com\n"
     )
     path = _write(".yaml", content)
     try:
@@ -84,8 +83,7 @@ def test_yaml_format():
         assert "service=api" in joined
         assert "database.host=db.example.com" in joined
         assert any(
-            line.startswith("database.password=") and HIGH_ENTROPY not in line
-            for line in out
+            line.startswith("database.password=") and HIGH_ENTROPY not in line for line in out
         )
     finally:
         path.unlink()
@@ -93,10 +91,10 @@ def test_yaml_format():
 
 def test_toml_format():
     content = (
-        "service = \"api\"\n"
+        'service = "api"\n'
         "[database]\n"
-        f"password = \"{HIGH_ENTROPY}\"\n"
-        "host = \"db.example.com\"\n"
+        f'password = "{HIGH_ENTROPY}"\n'
+        'host = "db.example.com"\n'
     )
     path = _write(".toml", content)
     try:
@@ -104,8 +102,7 @@ def test_toml_format():
         joined = "\n".join(out)
         assert "database.host=db.example.com" in joined
         assert any(
-            line.startswith("database.password=") and HIGH_ENTROPY not in line
-            for line in out
+            line.startswith("database.password=") and HIGH_ENTROPY not in line for line in out
         )
     finally:
         path.unlink()

@@ -29,7 +29,9 @@ def _configure_logging(level: str) -> None:
 def _build_parser(settings: DrapeSettings) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="drape",
-        description="Mask secrets in .env / SOPS / YAML / JSON / TOML files for safe LLM inspection",
+        description=(
+            "Mask secrets in .env / SOPS / YAML / JSON / TOML files for safe LLM inspection"
+        ),
     )
     parser.add_argument("file", nargs="?", default=".env", help="Path to file (default: .env)")
     parser.add_argument(

@@ -185,9 +185,7 @@ def _deny(reason: str) -> HookResponse:
 # --- Per-tool handlers --------------------------------------------------------
 
 
-def _handle_read(
-    tool_input: dict, config: MaskConfig, tool_name: str
-) -> Optional[HookResponse]:
+def _handle_read(tool_input: dict, config: MaskConfig, tool_name: str) -> Optional[HookResponse]:
     parsed = ReadToolInput.model_validate(tool_input)
     filepath = parsed.file_path
     if not filepath or not should_mask(filepath) or not os.path.isfile(filepath):
@@ -196,14 +194,11 @@ def _handle_read(
     if masked is None:
         return None
     return _deny(
-        f"drape: secrets masked for LLM safety.\n\n"
-        f"# {filepath} (masked by drape)\n{masked}"
+        f"drape: secrets masked for LLM safety.\n\n" f"# {filepath} (masked by drape)\n{masked}"
     )
 
 
-def _handle_grep(
-    tool_input: dict, config: MaskConfig, tool_name: str
-) -> Optional[HookResponse]:
+def _handle_grep(tool_input: dict, config: MaskConfig, tool_name: str) -> Optional[HookResponse]:
     parsed = GrepToolInput.model_validate(tool_input)
     sensitive = [t for t in parsed.all_paths() if should_mask(t) and os.path.isfile(t)]
     if not sensitive:
@@ -230,14 +225,10 @@ def _handle_grep(
 
     if not rendered:
         return None
-    return _deny(
-        "drape: Grep on a secrets file is masked.\n\n" + "\n\n".join(rendered)
-    )
+    return _deny("drape: Grep on a secrets file is masked.\n\n" + "\n\n".join(rendered))
 
 
-def _handle_bash(
-    tool_input: dict, config: MaskConfig, tool_name: str
-) -> Optional[HookResponse]:
+def _handle_bash(tool_input: dict, config: MaskConfig, tool_name: str) -> Optional[HookResponse]:
     parsed = BashToolInput.model_validate(tool_input)
     if not parsed.command:
         return None

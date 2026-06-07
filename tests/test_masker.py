@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from drape.masker import (
-    DEFAULT_ENTROPY_THRESHOLD,
     mask_value,
     parse_env_file,
     shannon_entropy,
@@ -73,7 +72,7 @@ class TestMaskValue:
     def test_mismatched_quotes_left_alone(self):
         # Leading " but trailing ' — not a matching pair, treat as raw.
         # 34-char input; 25% cap = 8; default prefix = 3 → 3 chars revealed.
-        assert mask_value(f'"{HIGH_ENTROPY}\'') == '"Zq...'
+        assert mask_value(f"\"{HIGH_ENTROPY}'") == '"Zq...'
 
     def test_pattern_aws_key(self):
         # AKIA-prefixed AWS access key id (20 chars). detect-secrets recognizes it.

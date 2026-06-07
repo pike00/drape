@@ -72,7 +72,7 @@ def _load_plugins() -> list[tuple[object, str]]:
             loaded: list[tuple[object, str]] = []
             for classname, label in _PLUGIN_LABELS:
                 try:
-                    plugin = initialize.from_plugin_classname(classname)
+                    plugin: object = initialize.from_plugin_classname(classname)
                 except Exception:
                     continue
                 loaded.append((plugin, label))

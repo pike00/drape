@@ -156,7 +156,5 @@ def parse_env_file(
             masked = mask_value(value, config=cfg) if value else ""
             lines.append(f"{key}={masked}")
 
-    logger.debug(
-        "Parsed {} masked entries (skipped {}) from {}", len(lines), skipped, filepath
-    )
+    logger.debug("Parsed {} masked entries (skipped {}) from {}", len(lines), skipped, filepath)
     return lines

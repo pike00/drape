@@ -5,12 +5,10 @@ from __future__ import annotations
 import io
 import json
 import sys
-import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from drape.cli import main
 
@@ -69,7 +67,7 @@ def test_cli_format_json(tmp_path: Path):
 
 def test_cli_no_patterns(tmp_path: Path):
     env = tmp_path / ".env"
-    env.write_text(f"AWS_KEY=AKIAIOSFODNN7EXAMPLE\n")
+    env.write_text("AWS_KEY=AKIAIOSFODNN7EXAMPLE\n")
     code, out, _ = _run(["--no-patterns", str(env)])
     assert code == 0
     # With patterns off, we should NOT see the <aws-access-key> label.

@@ -10,7 +10,6 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from drape.hook import (
     _bash_targets_env,
@@ -109,9 +108,7 @@ class TestHookDispatch:
     def test_read_env_file_returns_masked(self, tmp_path: Path):
         env = tmp_path / ".env"
         env.write_text(f"API_KEY={HIGH_ENTROPY}\n")
-        result = _run_hook(
-            {"tool_name": "Read", "tool_input": {"file_path": str(env)}}
-        )
+        result = _run_hook({"tool_name": "Read", "tool_input": {"file_path": str(env)}})
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
         reason = result["hookSpecificOutput"]["permissionDecisionReason"]
         assert "API_KEY=ZqL..." in reason
@@ -120,22 +117,16 @@ class TestHookDispatch:
     def test_read_non_env_passes_through(self, tmp_path: Path):
         readme = tmp_path / "README.md"
         readme.write_text("hello")
-        result = _run_hook(
-            {"tool_name": "Read", "tool_input": {"file_path": str(readme)}}
-        )
+        result = _run_hook({"tool_name": "Read", "tool_input": {"file_path": str(readme)}})
         assert result == {}  # exit 0, no JSON written
 
     def test_bash_cat_env_blocked(self):
-        result = _run_hook(
-            {"tool_name": "Bash", "tool_input": {"command": "cat .env"}}
-        )
+        result = _run_hook({"tool_name": "Bash", "tool_input": {"command": "cat .env"}})
         assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
         assert "drape" in result["hookSpecificOutput"]["permissionDecisionReason"]
 
     def test_bash_unrelated_passes_through(self):
-        result = _run_hook(
-            {"tool_name": "Bash", "tool_input": {"command": "ls -la"}}
-        )
+        result = _run_hook({"tool_name": "Bash", "tool_input": {"command": "ls -la"}})
         assert result == {}
 
     def test_grep_env_returns_masked_hits(self, tmp_path: Path):
@@ -153,7 +144,5 @@ class TestHookDispatch:
         assert HIGH_ENTROPY not in reason
 
     def test_unknown_tool_passes_through(self):
-        result = _run_hook(
-            {"tool_name": "Glob", "tool_input": {"pattern": "*.py"}}
-        )
+        result = _run_hook({"tool_name": "Glob", "tool_input": {"pattern": "*.py"}})
         assert result == {}

@@ -96,7 +96,7 @@ def _load_toml(filepath: Path) -> Any:
         import tomllib  # Python 3.11+
     except ImportError:
         try:
-            import tomli as tomllib  # type: ignore[import-untyped, no-redef]
+            import tomli as tomllib  # type: ignore[import-untyped, no-redef, import-not-found]
         except ImportError as e:
             raise RuntimeError("tomli not installed; install drape[toml]") from e
     with open(filepath, "rb") as f:
