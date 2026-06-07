@@ -1,31 +1,27 @@
 set shell := ["bash", "-uc"]
-
 # `release` / `version` / changelog recipes come from release.just (shared).
-
-import 'release.just'
+# drape publishes to PyPI via GitHub Actions OIDC (release.yml). `just release`
+# tags + pushes; the tag push triggers the workflow that uploads to PyPI.
 
 default:
     @just --list
 
-# drape publishes to PyPI via GitHub Actions OIDC (release.yml). `just release`
-# tags + pushes; the tag push triggers the workflow that uploads to PyPI.
+# BEGIN PROJECT-KIT — generated, do not edit by hand
+import '.project-kit/_lib.just'
+import '.project-kit/preview.just'
+import '.project-kit/release.just'
+import '.project-kit/test.just'
+import '.project-kit/deploy.just'
+import '.project-kit/build.just'
+import '.project-kit/db.just'
+import '.project-kit/setup.just'
+import '.project-kit/docs.just'
+import '.project-kit/clean.just'
+# END PROJECT-KIT
 
-# Run tests
-test:
-    uv run pytest
-
-# Run linters + type checks
-check:
-    uv run ruff check .
-    uv run black --check .
-    uv run mypy src/drape
+# --- repo-specific ---
 
 # Auto-format
 fmt:
     uv run ruff check --fix .
     uv run black .
-
-# Cut a release. Build and PyPI publish happen automatically via GitHub Actions
-# OIDC after the tag push (release.yml). Alias: `just tag LEVEL`.
-ship level:
-    @just release {{level}}

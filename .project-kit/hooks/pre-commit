@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# project-kit-provenance:
+#   upstream_repo: (project-kit original — no external upstream)
+#   upstream_path: templates/hooks/pre-commit
+#   synced_at: n/a
+#
+# project-kit-managed git pre-commit hook — lives at .project-kit/hooks/pre-commit,
+# activated per-repo via `core.hooksPath=.project-kit/hooks` (set by
+# `just setup-hooks`). Regenerated on `refresh`; edits here are overwritten.
+#
+# Two responsibilities, in order:
+#   1. Guard against the "sweep pre-staged files" failure mode: a bare
+#      `git add foo && git commit` commits EVERYTHING in the index, including
+#      files staged earlier by another session/agent the message doesn't
+#      describe. The guard surfaces the staged list when it exceeds a threshold
+#      and aborts unless acknowledged.
+#   2. Chain to the pre-commit framework (prek / pre-commit) when the repo has
+#      a .pre-commit-config.yaml — so a per-repo core.hooksPath doesn't lose the
+#      repo's configured lint/format hooks.
+#
+# Escape hatches for the guard, in order of preference:
+#   1. `git commit -m "msg" -- <files>...`  — commit ONLY the listed paths.
+#   2. `GIT_COMMIT_ACK=1 git commit ...`    — programmatic ack.
+#   3. `git commit --no-verify ...`         — bypass all hooks.
+# Tuning: GIT_COMMIT_THRESHOLD (default 5). Counts files only. Merge / revert /
+# cherry-pick / rebase commits pass through untouched.
+
+set -euo pipefail
+
+git_dir="$(git rev-parse --git-dir 2>/dev/null || echo .git)"
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+
+# ── 1. staged-file-count guard ────────────────────────────────────────
+guard() {
+  # Pass-throughs: operations that intentionally touch many files.
+  local marker
+  for marker in MERGE_HEAD REVERT_HEAD CHERRY_PICK_HEAD; do
+    [ -e "$git_dir/$marker" ] && return 0
+  done
+  [ -d "$git_dir/rebase-merge" ] && return 0
+  [ -d "$git_dir/rebase-apply" ] && return 0
+
+  # Programmatic bypass.
+  [ "${GIT_COMMIT_ACK:-}" = "1" ] && return 0
+
+  local threshold="${GIT_COMMIT_THRESHOLD:-5}"
+  local staged=()
+  while IFS= read -r -d '' f; do
+    staged+=("$f")
+  done < <(git diff --cached --name-only -z)
+
+  local count=${#staged[@]}
+  [ "$count" -eq 0 ] && return 0           # empty index → let git handle it
+  [ "$count" -le "$threshold" ] && return 0 # small commit → trust it
+
+  {
+    printf '\n▶ pre-commit guard: %d staged files (threshold %d)\n' "$count" "$threshold"
+    printf '  %s\n' "${staged[@]}"
+    printf '\n'
+  } >&2
+
+  # Interactive: prompt on /dev/tty if available.
+  if [ -t 2 ] && exec 3</dev/tty 2>/dev/null; then
+    printf 'Commit these %d files? [y/N] ' "$count" >&2
+    local ans
+    IFS= read -r ans <&3
+    exec 3<&-
+    case "$ans" in
+      [yY]|[yY][eE][sS]) return 0 ;;
+      *) printf 'aborted.\n' >&2; return 1 ;;
+    esac
+  fi
+
+  # Non-interactive (agent, CI, redirected stderr): abort with guidance.
+  cat >&2 <<'EOF'
+ABORT: no TTY for confirmation, and GIT_COMMIT_ACK is not set.
+
+To proceed:
+  - use 'git commit -m "msg" -- <files>...' to commit only specific paths
+    (this is the recommended fix; pre-staged files stay in the index)
+  - or re-run with GIT_COMMIT_ACK=1 to acknowledge the file list above
+  - or 'git commit --no-verify' to bypass this hook entirely
+EOF
+  return 1
+}
+
+guard || exit 1
+
+# ── 2. pre-commit framework (optional) ────────────────────────────────
+# Run the repo's configured hooks against the staged files. exec replaces this
+# process so the framework's exit code becomes the hook's.
+if [ -f "$repo_root/.pre-commit-config.yaml" ]; then
+  if command -v prek >/dev/null 2>&1; then
+    exec prek run
+  elif command -v pre-commit >/dev/null 2>&1; then
+    exec pre-commit run
+  fi
+fi
+
+exit 0

@@ -1,0 +1,347 @@
+#!/usr/bin/env bash
+# project-kit-provenance:
+#   upstream_repo: https://github.com/pike00/homelab-skills
+#   upstream_path: git/pre-push-secrets-scan/pre-push
+#   synced_at: 82ee3b8
+# Bump synced_at only via `uv run bin/vendor-hooks.py` — never by hand.
+#
+# project-kit-managed git pre-push hook — lives at .project-kit/hooks/pre-push,
+# activated per-repo via `core.hooksPath=.project-kit/hooks` (set by
+# `just setup-hooks`). Regenerated on `refresh`; edits here are overwritten.
+# Upstream source of truth: pike00/homelab-skills git/pre-push-secrets-scan.
+#
+# Runs two independent gates before allowing the push:
+#   1. pnpm-audit gate (only when the repo is a hardened pnpm project)
+#      Blocks if `pnpm audit --audit-level=high` reports a high/critical CVE.
+#   2. secrets/PII scan (any GitHub repo — public, private, or internal)
+#      LLM-scans the diff of commits being pushed; blocks on findings and
+#      sends a Mattermost alert. Private repos are scanned because they
+#      can still leak (collab misconfigs, visibility flips, IDE exfil) and
+#      because internal hostnames / PII are worth keeping out of git
+#      history regardless of who can read it today.
+#
+# Install:  just setup-hooks   (sets core.hooksPath=.project-kit/hooks for this repo)
+# Bypass everything:      git push --no-verify
+# Bypass only the audit:  PRE_PUSH_NO_AUDIT=1 git push
+# Bypass only the scan:   PRE_PUSH_NO_SCAN=1 git push (or PRE_PUSH_SKIP=1 for legacy)
+
+set -euo pipefail
+
+REMOTE="${1:-}"
+REMOTE_URL="${2:-}"
+
+# ── Config (override via env) ─────────────────────────────────────────
+# No hardcoded default — export PRE_PUSH_MM_WEBHOOK_URL to enable Mattermost
+# alerts. Empty default means the alert step (guarded below) is simply skipped.
+MM_WEBHOOK_URL="${PRE_PUSH_MM_WEBHOOK_URL:-}"
+MAX_DIFF_BYTES="${PRE_PUSH_MAX_DIFF_BYTES:-131072}"   # 128 KB
+AUDIT_TIMEOUT_SEC="${PRE_PUSH_AUDIT_TIMEOUT:-30}"
+
+# ── pnpm audit gate ───────────────────────────────────────────────────
+# Activates only when ALL of these are true:
+#   - repo root has pnpm-lock.yaml
+#   - repo root has .npmrc containing strict-peer-dependencies=true
+#     (signals first-party adoption of the hardening profile; vendored
+#     upstreams like karakeep that use node-linker=hoisted are exempt)
+#   - pnpm is on PATH
+#   - PRE_PUSH_NO_AUDIT is not set
+# Timeout protects against slow registries; on timeout the gate fails open
+# (with a warning) so the secrets scan still runs.
+audit_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ "${PRE_PUSH_NO_AUDIT:-0}" != "1" \
+      && -n "$audit_root" \
+      && -f "$audit_root/pnpm-lock.yaml" \
+      && -f "$audit_root/.npmrc" ]] \
+   && grep -qE '^strict-peer-dependencies=true[[:space:]]*$' "$audit_root/.npmrc" \
+   && command -v pnpm >/dev/null 2>&1; then
+    printf '[pre-push-audit] running pnpm audit --audit-level=high (timeout %ss)\n' "$AUDIT_TIMEOUT_SEC" >&2
+    set +e
+    timeout "$AUDIT_TIMEOUT_SEC" bash -c "cd '$audit_root' && pnpm audit --audit-level=high" >/tmp/.pre-push-audit.$$ 2>&1
+    audit_rc=$?
+    set -e
+    if (( audit_rc == 0 )); then
+        printf '[pre-push-audit] clean\n' >&2
+        rm -f /tmp/.pre-push-audit.$$
+    elif (( audit_rc == 124 )); then
+        printf '[pre-push-audit] WARN: audit timed out after %ss — allowing push\n' "$AUDIT_TIMEOUT_SEC" >&2
+        rm -f /tmp/.pre-push-audit.$$
+    else
+        printf '[pre-push-audit]\n' >&2
+        printf '[pre-push-audit] PUSH BLOCKED — pnpm audit reports HIGH or CRITICAL CVE\n' >&2
+        printf '[pre-push-audit]\n' >&2
+        sed 's/^/[pre-push-audit] /' /tmp/.pre-push-audit.$$ >&2 || true
+        rm -f /tmp/.pre-push-audit.$$
+        printf '[pre-push-audit]\n' >&2
+        printf '[pre-push-audit] Resolve via `pnpm update` or add a `pnpm.overrides` entry, then push again.\n' >&2
+        printf '[pre-push-audit] False positive / waiting on upstream? Use: PRE_PUSH_NO_AUDIT=1 git push\n' >&2
+        printf '[pre-push-audit] Bypass everything:                       git push --no-verify\n' >&2
+        exit 1
+    fi
+fi
+
+# ── Secrets / PII scan gate (all GitHub repos: public, private, internal) ──
+[[ "${PRE_PUSH_SKIP:-0}" == "1" || "${PRE_PUSH_NO_SCAN:-0}" == "1" ]] && exit 0
+
+# ── Helpers ───────────────────────────────────────────────────────────
+log() { printf '[pre-push-scan] %s\n' "$*" >&2; }
+
+github_repo() {
+    # Handles ssh (git@github.com:user/repo.git) and https forms
+    if [[ "$1" =~ github\.com[:/]([a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+) ]]; then
+        local repo="${BASH_REMATCH[1]}"
+        echo "${repo%.git}"
+    fi
+}
+
+# ── Only handle GitHub remotes ────────────────────────────────────────
+REPO=$(github_repo "$REMOTE_URL")
+[[ -z "$REPO" ]] && exit 0
+
+# ── Repo visibility check ─────────────────────────────────────────────
+if ! command -v gh &>/dev/null; then
+    log "gh not found — skipping scan"
+    exit 0
+fi
+
+VISIBILITY=$(gh repo view "$REPO" --json visibility -q .visibility 2>/dev/null || echo "UNKNOWN")
+case "$VISIBILITY" in
+    PUBLIC|PRIVATE|INTERNAL) ;;
+    *) log "Skipping scan (visibility=$VISIBILITY)"; exit 0 ;;
+esac
+
+log "Scanning $VISIBILITY repo $REPO for secrets/PII..."
+
+# ── Locate claude CLI ─────────────────────────────────────────────────
+CLAUDE=""
+for p in claude "$HOME/.local/bin/claude" "/usr/local/bin/claude" "$HOME/.npm-global/bin/claude"; do
+    if [[ -x "$(command -v "$p" 2>/dev/null || echo "")" ]] || [[ -x "$p" ]]; then
+        CLAUDE=$(command -v "$p" 2>/dev/null || echo "$p")
+        break
+    fi
+done
+if [[ -z "$CLAUDE" ]]; then
+    log "WARNING: claude CLI not found — cannot LLM-scan; allowing push"
+    exit 0
+fi
+
+# ── Collect diff of commits being pushed ──────────────────────────────
+# Must read stdin before spawning subprocesses (git hooks pipe refs via stdin)
+PUSH_REFS=$(cat)
+
+SCAN_DIR=$(mktemp -d)
+trap 'rm -rf "$SCAN_DIR"' EXIT
+
+DIFF_FILE="$SCAN_DIR/push.diff"
+touch "$DIFF_FILE"
+HAS_CONTENT=false
+
+DEFAULT_BRANCH=$(gh repo view "$REPO" --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo "main")
+
+# ── Helper: detect draft-frontmatter markdown files at a given sha ────
+# Prints pathspec :(exclude) entries for any *.md/*.mdx/*.markdown file
+# whose new version has `draft: true` in its YAML frontmatter. The
+# contract: drafts are unscrutinized work-in-progress; the maintainer
+# is responsible for re-scanning at publish time.
+build_draft_excludes() {
+    local sha="$1" base="$2"
+    local file changed
+    if [[ -n "$base" ]]; then
+        changed=$(git diff --name-only "$base..$sha" 2>/dev/null || true)
+    else
+        changed=$(git show --name-only --format= "$sha" 2>/dev/null || true)
+    fi
+    while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+        [[ ! "$file" =~ \.(md|mdx|markdown)$ ]] && continue
+        if git show "$sha:$file" 2>/dev/null | \
+           awk 'NR==1{if($0~/^---[[:space:]]*$/){fm=1;next}else exit} fm&&/^---[[:space:]]*$/{exit} fm{print}' | \
+           grep -qE '^draft:[[:space:]]*true[[:space:]]*$'; then
+            printf '%s\n' ":(exclude)$file"
+            log "  excluding draft post: $file" >&2
+        fi
+    done <<< "$changed"
+}
+
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+    [[ -z "$local_ref" ]] && continue
+    # Skip branch deletions
+    [[ "$local_sha" == "0000000000000000000000000000000000000000" ]] && continue
+
+    if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+        # New branch: diff from merge-base with default branch
+        BASE=$(git merge-base "refs/remotes/$REMOTE/$DEFAULT_BRANCH" "$local_sha" 2>/dev/null || true)
+    else
+        BASE="$remote_sha"
+    fi
+
+    mapfile -t EXCLUDES < <(build_draft_excludes "$local_sha" "$BASE")
+
+    if [[ -n "$BASE" ]]; then
+        git log --format="=== commit %H%n%s%n%b" "$BASE..$local_sha" >> "$DIFF_FILE" 2>/dev/null || true
+        git diff "$BASE..$local_sha" -- . "${EXCLUDES[@]}" >> "$DIFF_FILE" 2>/dev/null || true
+    else
+        git log --format="=== commit %H%n%s%n%b" "$local_sha" >> "$DIFF_FILE" 2>/dev/null || true
+        if (( ${#EXCLUDES[@]} > 0 )); then
+            EMPTY_TREE=$(git hash-object -t tree /dev/null)
+            git diff "$EMPTY_TREE" "$local_sha" -- . "${EXCLUDES[@]}" >> "$DIFF_FILE" 2>/dev/null || true
+        else
+            git show "$local_sha" >> "$DIFF_FILE" 2>/dev/null || true
+        fi
+    fi
+    HAS_CONTENT=true
+done <<< "$PUSH_REFS"
+
+if ! $HAS_CONTENT || [[ ! -s "$DIFF_FILE" ]]; then
+    exit 0
+fi
+
+# ── Truncate large diffs ──────────────────────────────────────────────
+DIFF_SIZE=$(wc -c < "$DIFF_FILE")
+TRUNCATED=false
+if (( DIFF_SIZE > MAX_DIFF_BYTES )); then
+    log "Diff is ${DIFF_SIZE}B — truncating to ${MAX_DIFF_BYTES}B for LLM scan"
+    head -c "$MAX_DIFF_BYTES" "$DIFF_FILE" > "$SCAN_DIR/trunc.diff"
+    echo -e "\n[DIFF TRUNCATED AT ${MAX_DIFF_BYTES} BYTES]" >> "$SCAN_DIR/trunc.diff"
+    mv "$SCAN_DIR/trunc.diff" "$DIFF_FILE"
+    TRUNCATED=true
+fi
+
+# ── JSON parser (first { ... last }) ─────────────────────────────────
+cat > "$SCAN_DIR/parse.py" << 'PY'
+import sys, json
+text = open(sys.argv[1]).read()
+try:
+    print(json.dumps(json.loads(text.strip()))); sys.exit(0)
+except Exception:
+    pass
+s, e = text.find('{'), text.rfind('}')
+if s != -1 and e > s:
+    try:
+        d = json.loads(text[s:e+1])
+        if 'found' in d:
+            print(json.dumps(d)); sys.exit(0)
+    except Exception:
+        pass
+print('{"found":false,"findings":[],"error":"parse_failed"}')
+PY
+
+# ── Per-repo allowlist (intentional public references) ───────────────
+# A `.pre-push-allowlist` file at the repo root may list strings that are
+# intentionally public (e.g. self-hosted analytics endpoints, documented
+# CDN domains). One entry per line; lines starting with `#` are comments.
+ALLOWLIST_ENTRIES=""
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+if [[ -n "$REPO_ROOT" && -f "$REPO_ROOT/.pre-push-allowlist" ]]; then
+    ALLOWLIST_ENTRIES=$(grep -vE '^\s*(#|$)' "$REPO_ROOT/.pre-push-allowlist" || true)
+fi
+
+# ── Build prompt ──────────────────────────────────────────────────────
+{
+cat << 'HEADER'
+You are a security scanner reviewing a git diff before it is pushed to a PUBLIC GitHub repository.
+
+Scan exhaustively for:
+1. SECRETS: API keys, tokens, passwords, private keys, JWTs, OAuth secrets, database connection strings
+   with credentials, .env values, AWS/GCP/Azure credentials, webhook URLs with tokens, cookie secrets,
+   any string matching secret/key/token/password = "non-placeholder-value"
+2. PII / IDENTIFYING INFO: personal email addresses (non-generic), phone numbers, home addresses,
+   private/internal hostnames (*.internal, *.local, *.lab, NAS names, router names, homelab hostnames),
+   private IP ranges (10.x, 192.168.x, 172.16-31.x), tailnet domain names, VPN configs,
+   internal service names tied to private infrastructure
+
+NEVER flag the following — these are safe to publish:
+- age PUBLIC keys: strings starting with "age1" followed by ~58 bech32 characters. These are
+  cryptographic public keys by design; the private key never starts with "age1". Do not flag age
+  public keys in documentation, SOPS metadata (.sops.yaml, sops: blocks), or example configs.
+- willpike00@gmail.com — this is the maintainer's public GitHub author email. It appears on
+  every commit Author line and in pyproject/package.json author fields by design. Do not flag.
+- Git commit metadata that is inherent to the diff format: "Author: Name <email>" lines,
+  "Date:" lines, commit hashes. These are part of git's structure and are intentionally public
+  on GitHub. Only flag emails / identifiers that appear in actual FILE CONTENT (added lines).
+- Loopback / localhost addresses: 127.0.0.1, ::1, localhost, 0.0.0.0. These are not identifying
+  and reveal no infrastructure topology. Do not flag in any context.
+- Content on REMOVED lines (lines starting with "-" in the diff). Only flag content being
+  INTRODUCED (lines starting with "+"). Deletions cannot leak anything that was not already public.
+- References that appear only in surrounding system/context prose (e.g. MEMORY.md framing,
+  agent system messages, summary text that is not part of the diff itself). The diff is the
+  ONLY thing being pushed — only flag findings that are present in "+ " added lines.
+
+Check: ADDED file contents (lines starting with "+"), variable values, comments, commit subject
+and body messages, hardcoded strings. Do not flag the diff context lines, removed lines, or
+commit author metadata.
+
+Reply ONLY with valid JSON — no preamble, no explanation, no markdown fences:
+{"found":true,"findings":["specific description of finding 1","finding 2"]}
+or
+{"found":false,"findings":[]}
+
+HEADER
+
+if [[ -n "$ALLOWLIST_ENTRIES" ]]; then
+    cat << 'ALLOWLIST_HEADER'
+ALLOWLIST — the following strings appear in this repo intentionally and are confirmed public/non-sensitive
+by the maintainer. Do NOT flag these as findings, even though they may match the patterns above:
+ALLOWLIST_HEADER
+    while IFS= read -r entry; do
+        printf -- '- %s\n' "$entry"
+    done <<< "$ALLOWLIST_ENTRIES"
+    echo
+fi
+
+echo "GIT DIFF:"
+cat "$DIFF_FILE"
+} > "$SCAN_DIR/prompt.txt"
+
+# ── Run LLM scan ──────────────────────────────────────────────────────
+log "Running LLM scan (may take a few seconds)..."
+
+if ! "$CLAUDE" -p "$(cat "$SCAN_DIR/prompt.txt")" > "$SCAN_DIR/result.txt" 2>/dev/null; then
+    log "LLM scan failed — allowing push (manual review recommended)"
+    exit 0
+fi
+
+PARSED=$(python3 "$SCAN_DIR/parse.py" "$SCAN_DIR/result.txt" 2>/dev/null || echo '{"found":false}')
+FOUND=$(python3 -c "import sys,json; print(json.loads(sys.argv[1]).get('found',False))" "$PARSED" 2>/dev/null || echo "False")
+
+# ── Clean — allow push ────────────────────────────────────────────────
+if [[ "$FOUND" != "True" ]]; then
+    log "Clean — no secrets or PII found"
+    $TRUNCATED && log "Note: only first ${MAX_DIFF_BYTES}B scanned; run manually for full review"
+    exit 0
+fi
+
+# ── Findings — block push ─────────────────────────────────────────────
+FINDINGS_BULLETS=$(python3 -c "
+import sys, json
+d = json.loads(sys.argv[1])
+print('\n'.join('- ' + f for f in d.get('findings', ['(no details returned)'])))
+" "$PARSED" 2>/dev/null || echo "- (parse error)")
+
+log ""
+log "PUSH BLOCKED — secrets/PII detected in commits to $REPO ($VISIBILITY)"
+log ""
+while IFS= read -r line; do log "  $line"; done <<< "$FINDINGS_BULLETS"
+log ""
+log "Resolve the issues above, then push again."
+log "False positive? Use: git push --no-verify"
+
+# ── Mattermost alert (incoming webhook) ───────────────────────────────
+if [[ -n "$MM_WEBHOOK_URL" ]] && command -v curl &>/dev/null; then
+    MM_TEXT=$(python3 -c "
+import json, sys
+text = '''### :rotating_light: Pre-push scan blocked push to \`$REPO\`
+
+**Findings:**
+$FINDINGS_BULLETS
+
+Host: \`$(hostname)\`  •  Repo: <https://github.com/$REPO>  •  Use \`git push --no-verify\` only after confirming false positive.'''
+print(json.dumps({'text': text}))
+")
+    if curl -sS -X POST -H 'Content-Type: application/json' -d "$MM_TEXT" "$MM_WEBHOOK_URL" >/dev/null 2>&1; then
+        log "Mattermost alert sent"
+    else
+        log "Mattermost alert failed (check webhook URL / connectivity)"
+    fi
+fi
+
+exit 1
