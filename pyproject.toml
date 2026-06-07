@@ -116,12 +116,9 @@ exclude_lines = [
 
 [tool.black]
 line-length = 100
-extend-exclude = "\\.project-kit"
 target-version = ["py312"]
 
 [tool.ruff]
-# .project-kit/ is vendored project-kit tooling (regenerated on refresh); do not lint it.
-extend-exclude = [".project-kit"]
 target-version = "py312"
 line-length = 100
 
