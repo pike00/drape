@@ -3,8 +3,8 @@ title: drape Roadmap Follow-up
 status: active
 repos: [drape]
 started: 2026-05-02
-last_updated: 2026-05-10
-next_step: Plan v0.4.0 scope — remaining v0.2.0 items (file-pattern allowlist, custom masking patterns, hook env-var config, --debug flag, code coverage, type hints) plus Docker Compose env-var masking and multi-hook configs from v0.3.0
+last_updated: 2026-05-20
+next_step: Plan v0.4.0 scope — remaining v0.2.0 items (.env.local/.production/.staging variant matching, custom masking patterns via config file, --debug flag, code coverage, type hints) plus Docker Compose env-var masking and multi-hook configs from v0.3.0
 ---
 
 # drape Roadmap Follow-up
@@ -20,9 +20,9 @@ Track ongoing development of drape beyond v0.1.0 — feature decisions, integrat
 - [x] Decide v0.2.0 vs v0.3.0 placement for `.env.sops` in-memory decrypt + mask support (shipped in v0.2.0 via `src/drape/sops.py`)
 - [x] Open GitHub issue on pike00/drape for `.env.sops` support (moot — shipped directly in v0.2.0)
 - [ ] Implement `.env.local`, `.env.production`, `.env.staging` variant matching
-- [ ] Configurable file-pattern allowlist (which files the hook masks)
-- [ ] Custom masking patterns via config file (`mask_chars: 5`, `mask_pattern: "***"`)
-- [ ] Hook configuration via env vars
+- [x] Configurable file-pattern allowlist (which files the hook masks) — `DRAPE_HOOK_PATTERNS` env var, `DrapeSettings.hook_patterns` consumed by `should_mask()` in `src/drape/hook/__init__.py`
+- [ ] Custom masking patterns via config file (`mask_chars: 5`, `mask_pattern: "***"`) — partial: `DRAPE_PREFIX_CHARS` tunes reveal length via env var, but no config-file surface and no `mask_pattern` replacement-string option
+- [x] Hook configuration via env vars — `DrapeSettings` (`DRAPE_*` prefix) in `src/drape/settings.py`
 - [ ] `--debug` flag + better error messages
 - [x] Optional audit logging (log masked operations) — `src/drape/audit.py`
 - [x] GitHub Actions CI/CD pipeline — `.github/workflows/release.yml`
@@ -48,6 +48,17 @@ Track ongoing development of drape beyond v0.1.0 — feature decisions, integrat
 - [ ] Settings UI
 
 ## Session Log
+
+### 2026-05-20
+
+- Headless reconciliation pass. README last touched 2026-05-10 at v0.3.1; repo has since shipped v0.3.2 and v0.3.3 to PyPI.
+- Checked off two v0.2.0 items grounded in verified code:
+  - **Configurable file-pattern allowlist** — `DRAPE_HOOK_PATTERNS` env var splits CSV into `DrapeSettings.hook_patterns`; `should_mask()` (`src/drape/hook/__init__.py:118`) iterates them via `Path.match`.
+  - **Hook configuration via env vars** — full `DrapeSettings` model (`DRAPE_*` prefix, pydantic-settings) in `src/drape/settings.py` covers prefix length, entropy threshold, pattern toggle, log level, audit log, hook patterns.
+- "Custom masking patterns via config file" downgraded to partial — `DRAPE_PREFIX_CHARS` covers the `mask_chars` intent but only via env var; no config-file surface and no `mask_pattern` replacement string.
+- Confirmed `.env.local/.production/.staging` variant matching still NOT done: `_basename_match_env()` matches `.env`, `*.env`, `*.env.sops` only — `.env.local` falls through unless explicitly added to `DRAPE_HOOK_PATTERNS`.
+- Other repo changes since last pass (not roadmap items, noted for context): hook code restructured into the `src/drape/hook/` subpackage; bash secret-guard regex fixed to stop spanning across commands (PR #3, commit 2d994b2); `SECURITY.md` added; Codacy **security** scan workflow added (`.github/workflows/codacy.yml`) — SARIF code-scanning, not coverage, so the "Code coverage reports" item stays open; Dependabot moved to weekly; release tooling migrated to release-kit (`cliff.toml`, `release.just`, `ship` recipe).
+- Bumped `last_updated` to 2026-05-20; trimmed the two shipped items out of `next_step`.
 
 ### 2026-05-10
 

@@ -134,3 +134,6 @@ dmypy.json
 
 # release-kit draft notes (working file, not committed)
 release-notes.json
+
+# Personal extension-brainstorm notes (suggest-extensions output) — keep local, never publish
+docs/extensions-*.md
