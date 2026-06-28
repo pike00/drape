@@ -1,0 +1,105 @@
+{
+  "branch": "main",
+  "build": {
+    "cargo_enabled": false,
+    "enabled": false,
+    "image_enabled": false,
+    "image_name": null,
+    "image_registry": null,
+    "images": [],
+    "wheel_enabled": false
+  },
+  "ci": {
+    "enabled": false,
+    "engine": "none",
+    "gate": [
+      "test-all"
+    ],
+    "on_pr": true,
+    "on_push": true
+  },
+  "clean": {
+    "enabled": false
+  },
+  "db": {
+    "backend": "none",
+    "enabled": false
+  },
+  "delete_recipes": [],
+  "deploy": {
+    "cf_worker": null,
+    "custom_command": null,
+    "enabled": false,
+    "homelab_app": null,
+    "pypi_package": null,
+    "target": "none"
+  },
+  "docs": {
+    "backend": "none",
+    "deploy_custom_command": null,
+    "deploy_project_name": null,
+    "deploy_target": "none",
+    "enabled": false,
+    "output_dir": "site",
+    "source_dir": "docs"
+  },
+  "domain": "",
+  "language": "python",
+  "managed_subsystems": [
+    "release"
+  ],
+  "preview": {
+    "base": "main",
+    "compose_file": "compose.worktree.yml",
+    "enabled": false,
+    "health_path": "/api/health",
+    "host_pattern": null,
+    "ports": {},
+    "project_prefix": null,
+    "shell_service": "app",
+    "test_command": "pytest",
+    "test_service": null
+  },
+  "project_name": "drape",
+  "public": true,
+  "refreshed_at": "2026-06-27",
+  "release": {
+    "enabled": true,
+    "install_command": "uv tool install drape=={version}",
+    "litellm_base_url": "",
+    "litellm_model": "deepseek-v4-pro-cloud",
+    "prod_homelab_env": "",
+    "prod_source": "none"
+  },
+  "setup": {
+    "backend": null,
+    "enabled": false,
+    "frontend": null,
+    "hooks": true,
+    "precommit": false
+  },
+  "skill_version": "0.1.0",
+  "test": {
+    "backend": {
+      "cmd": null,
+      "watch": null
+    },
+    "e2e": {
+      "cmd": null,
+      "watch": null
+    },
+    "enabled": false,
+    "frontend": {
+      "cmd": null,
+      "watch": null
+    },
+    "lint": {
+      "cmd": null,
+      "watch": null
+    },
+    "typecheck": {
+      "cmd": null,
+      "watch": null
+    }
+  }
+}
